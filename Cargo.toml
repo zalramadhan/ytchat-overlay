@@ -1,0 +1,21 @@
+[package]
+name = "ytchat-overlay"
+version = "0.1.0"
+edition = "2021"
+description = "Overlay chat YouTube live transparan & klik-tembus untuk KDE Plasma Wayland"
+
+[dependencies]
+gtk = { package = "gtk4", version = "0.9", features = ["v4_10"] }
+gtk4-layer-shell = "0.5"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+dirs = "5"
+async-channel = "2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true
