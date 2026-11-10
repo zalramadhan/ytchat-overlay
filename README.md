@@ -64,7 +64,18 @@ Menutup jendela panel juga menghentikan overlay, supaya tidak ada overlay
 |---|---|
 | **Opacity latar** | Kegelapan kotak di belakang tiap pesan (0% = tanpa latar, 100% = hitam pekat). Berlaku langsung ke pesan yang sudah tampil. |
 | **Ukuran font** | Ukuran teks chat dalam piksel (10–48). |
+| **Ukuran avatar** | Ukuran foto profil bulat di samping pesan (12–48 px). Berlaku langsung ke pesan yang sudah tampil. |
+| **Jarak antar pesan** | Spasi vertikal antar kotak pesan (0–20 px). 0 = pesan menempel rapat, 6–10 = lebih lega. |
 | **Monitor** | Layar tempat overlay tampil. "Ikuti layar aktif" = layar yang sedang dipakai. Pindah monitor tidak menghapus chat yang sudah tampil. |
+
+Di bawah setelan Tampilan ada kotak **Pratinjau** berisi tiga contoh pesan (biasa,
+member, Super Chat) dengan latar gelap. Ukuran font, opacity latar, ukuran avatar,
+dan jarak antar pesan di pratinjau sama persis dengan overlay sungguhan, jadi
+gampang mengatur sebelum live dimulai. Pratinjau ikut berubah begitu slider
+digeser.
+
+Jendela panel bisa diperbesar/diperkecil dan isinya bisa di-scroll, jadi tetap
+terpakai di layar kecil (mis. laptop 1366×768). Ukuran bawaannya 470×820.
 
 Semua setelan di panel tersimpan otomatis ke file config.
 
@@ -85,8 +96,14 @@ Bisa diedit manual; perubahan dari file berlaku setelah aplikasi dijalankan ulan
 | `font_size` | `16.0` | Ukuran font (piksel). |
 | `text_color` | `"#ffffff"` | Warna teks chat. |
 | `bg_opacity` | `0.25` | Kegelapan latar pesan (0.0–1.0). |
-| `show_avatars` | `true` | Tampilkan avatar pengirim. |
-| `avatar_size` | `28` | Ukuran avatar (piksel). |
+| `show_avatars` | `true` | Tampilkan avatar pengirim (bulat, seperti live chat YouTube). |
+| `avatar_px` | `16` | Ukuran avatar dalam piksel (12–48). Bisa diatur lewat slider "Ukuran avatar" di panel. |
+| `msg_gap` | `4` | Jarak vertikal antar kotak pesan dalam piksel (0–20). Slider "Jarak antar pesan" di panel. |
+
+> **Migrasi dari versi awal:** kunci lama `avatar_size` (dulu 28) sudah tidak
+dipakai dan diabaikan saat membaca config. Ukuran avatar sekarang memakai
+`avatar_px` dengan bawaan 16 px, jadi tidak perlu menghapus config lama —
+nilainya akan tertulis sendiri sebagai `avatar_px` begitu kamu menggeser slider.
 | `max_messages` | `40` | Jumlah pesan maksimum yang ditahan di layar. |
 | `fade_after_secs` | `30.0` | Pesan mulai memudar setelah N detik. `0` = tidak pernah memudar. |
 | `fade_duration_secs` | `3.0` | Lama proses memudar sampai hilang. |

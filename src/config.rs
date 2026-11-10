@@ -27,7 +27,10 @@ pub struct Config {
     /// 0.0 = sepenuhnya transparan, 1.0 = hitam pekat (latar tiap pesan)
     pub bg_opacity: f64,
     pub show_avatars: bool,
-    pub avatar_size: i32,
+    /// Ukuran avatar dalam piksel (12–48)
+    pub avatar_px: i32,
+    /// Jarak antar kotak pesan dalam piksel (0–20)
+    pub msg_gap: i32,
     pub max_messages: usize,
     /// Pesan mulai memudar setelah N detik (0 = tidak pernah memudar)
     pub fade_after_secs: f64,
@@ -53,7 +56,8 @@ impl Default for Config {
             text_color: "#ffffff".into(),
             bg_opacity: 0.25,
             show_avatars: true,
-            avatar_size: 28,
+            avatar_px: 16,
+            msg_gap: 4,
             max_messages: 40,
             fade_after_secs: 30.0,
             fade_duration_secs: 3.0,
@@ -104,12 +108,14 @@ impl Config {
         }
     }
 
-    /// Simpan setelan tampilan dari panel (opacity, ukuran font, monitor).
-    pub fn save_look(bg_opacity: f64, font_size: f64, output: &str) {
+    /// Simpan setelan tampilan dari panel (opacity, font, avatar, jarak, monitor).
+    pub fn save_look(cfg: &Config) {
         let mut c = Self::read_file().unwrap_or_default();
-        c.bg_opacity = bg_opacity;
-        c.font_size = font_size;
-        c.output = output.to_string();
+        c.bg_opacity = cfg.bg_opacity;
+        c.font_size = cfg.font_size;
+        c.avatar_px = cfg.avatar_px;
+        c.msg_gap = cfg.msg_gap;
+        c.output = cfg.output.clone();
         c.save();
     }
 

@@ -93,13 +93,25 @@ impl Overlay {
 
     /// Opacity latar pesan (0.0–1.0); langsung terlihat pada semua pesan.
     pub fn set_opacity(&self, opacity: f64) {
-        self.ui.set_look(Some(opacity), None);
+        self.ui.set_look(Some(opacity), None, None);
         self.schedule_persist();
     }
 
     /// Ukuran font chat dalam piksel.
     pub fn set_font_size(&self, size: f64) {
-        self.ui.set_look(None, Some(size));
+        self.ui.set_look(None, Some(size), None);
+        self.schedule_persist();
+    }
+
+    /// Jarak antar pesan dalam piksel (0–20).
+    pub fn set_gap(&self, px: i32) {
+        self.ui.set_look(None, None, Some(px));
+        self.schedule_persist();
+    }
+
+    /// Ukuran avatar dalam piksel (12–48); berlaku juga untuk pesan yang sudah tampil.
+    pub fn set_avatar_size(&self, px: i32) {
+        self.ui.set_avatar_size(px);
         self.schedule_persist();
     }
 
@@ -358,6 +370,7 @@ fn install_css(provider: &gtk::CssProvider, cfg: &Config) {
     let size_pt = px * 0.75;
     let author_pt = (px * 0.8).max(7.0) * 0.75;
     let radius = (px * 0.5).round() as i32;
+    let gap = cfg.msg_gap.clamp(0, 20);
 
     let css = format!(
         r#"
@@ -366,8 +379,8 @@ fn install_css(provider: &gtk::CssProvider, cfg: &Config) {
         .msg {{
             background-color: rgba(0, 0, 0, {bg:.3});
             border-radius: {radius}px;
-            padding: 3px 8px;
-            margin: 2px 0px;
+            padding: 2px 7px;
+            margin: 0px 0px {gap}px 0px;
             color: {fg};
             font-family: "{font}";
         }}
@@ -376,6 +389,10 @@ fn install_css(provider: &gtk::CssProvider, cfg: &Config) {
             color: {fg};
             font-family: "{font}";
             font-size: {size_pt:.2}pt;
+        }}
+        .msg .body, .msg .body text,
+        .msg .author, .msg .amount, .msg .badge {{
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.98), 0 0 6px rgba(0, 0, 0, 0.9);
         }}
         .msg .author {{
             font-family: "{font}";
@@ -415,15 +432,82 @@ fn install_css(provider: &gtk::CssProvider, cfg: &Config) {
         .msg.sc1 .author, .msg.sc2 .author, .msg.sc4 .author,
         .msg.sc5 .author, .msg.sc6 .author, .msg.sc7 .author {{ color: #ffffff; }}
         .msg.sc3 .author {{ color: #1b1b1b; }}
+        .msg.sc1 .body, .msg.sc1 .body text, .msg.sc2 .body, .msg.sc2 .body text,
+        .msg.sc3 .body, .msg.sc3 .body text, .msg.sc4 .body, .msg.sc4 .body text,
+        .msg.sc5 .body, .msg.sc5 .body text, .msg.sc6 .body, .msg.sc6 .body text,
+        .msg.sc7 .body, .msg.sc7 .body text,
+        .msg.sc1 .author, .msg.sc2 .author, .msg.sc3 .author, .msg.sc4 .author,
+        .msg.sc5 .author, .msg.sc6 .author, .msg.sc7 .author {{
+            text-shadow: none;
+        }}
         .chat-root.editing {{
             background-color: rgba(20, 20, 20, 0.35);
             border: 1px dashed rgba(255, 255, 255, 0.7);
         }}
-        picture.avatar {{ border-radius: 4px; }}
         "#
     );
 
     provider.load_from_data(&css);
+}
+
+/// Batas ukuran avatar yang masuk akal (piksel).
+fn avatar_px(size: i32) -> i32 {
+    size.clamp(12, 48)
+}
+
+/// Avatar bulat seperti live chat YouTube. Digambar manual supaya gambarnya
+/// benar-benar terpotong lingkaran (GTK tidak memotong isi `Picture`).
+fn avatar_widget(bytes: &[u8], px: i32) -> Option<gtk::Widget> {
+    use gtk::gdk_pixbuf::prelude::*;
+
+    let loader = gtk::gdk_pixbuf::PixbufLoader::new();
+    let pixbuf = match loader.write(bytes).and_then(|_| loader.close()) {
+        Ok(()) => loader.pixbuf(),
+        Err(_) => None,
+    };
+
+    let Some(pixbuf) = pixbuf else {
+        // Format gambar tidak dikenal: pakai tampilan lama (kotak, tanpa potong).
+        let texture = gtk::gdk::Texture::from_bytes(&gtk::glib::Bytes::from(bytes)).ok()?;
+        let pic = gtk::Picture::for_paintable(&texture);
+        pic.set_content_fit(gtk::ContentFit::Cover);
+        pic.set_can_shrink(true);
+        pic.set_size_request(px, px);
+        pic.set_valign(gtk::Align::Start);
+        pic.set_can_target(false);
+        pic.add_css_class("avatar");
+        return Some(pic.upcast());
+    };
+
+    let area = gtk::DrawingArea::new();
+    area.set_content_width(px);
+    area.set_content_height(px);
+    area.set_valign(gtk::Align::Start);
+    area.set_can_target(false);
+    area.add_css_class("avatar");
+    area.set_draw_func(move |_, cr, w, h| {
+        let (w, h) = (w as f64, h as f64);
+        let (pw, ph) = (pixbuf.width() as f64, pixbuf.height() as f64);
+        if pw <= 0.0 || ph <= 0.0 || w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        let scale = (w / pw).max(h / ph); // cover: penuhi lingkaran, tengah
+        cr.save().ok();
+        cr.arc(
+            w / 2.0,
+            h / 2.0,
+            w.min(h) / 2.0,
+            0.0,
+            std::f64::consts::TAU,
+        );
+        cr.clip();
+        cr.translate((w - pw * scale) / 2.0, (h - ph * scale) / 2.0);
+        cr.scale(scale, scale);
+        cr.set_source_pixbuf(&pixbuf, 0.0, 0.0);
+        cr.paint().ok();
+        cr.restore().ok();
+    });
+    Some(area.upcast())
 }
 
 fn apply_input_region(ui: &Ui) {
@@ -465,8 +549,8 @@ impl Ui {
         }
     }
 
-    /// Terapkan opacity/ukuran font baru dan muat ulang CSS (tanpa restart).
-    fn set_look(&self, opacity: Option<f64>, font_size: Option<f64>) {
+    /// Terapkan opacity/font/jarak baru dan muat ulang CSS (tanpa restart).
+    fn set_look(&self, opacity: Option<f64>, font_size: Option<f64>, gap: Option<i32>) {
         {
             let mut cfg = self.cfg.borrow_mut();
             if let Some(v) = opacity {
@@ -475,14 +559,43 @@ impl Ui {
             if let Some(v) = font_size {
                 cfg.font_size = v.clamp(8.0, 72.0);
             }
+            if let Some(v) = gap {
+                cfg.msg_gap = v.clamp(0, 20);
+            }
         }
         install_css(&self.provider, &self.cfg.borrow());
+    }
+
+    /// Ubah ukuran avatar dan sesuaikan avatar pada baris yang sudah tampil.
+    fn set_avatar_size(&self, px: i32) {
+        let px = avatar_px(px);
+        {
+            let mut cfg = self.cfg.borrow_mut();
+            if cfg.avatar_px == px {
+                return;
+            }
+            cfg.avatar_px = px;
+        }
+        for (_, row) in self.rows.borrow().iter() {
+            let mut child = row.first_child();
+            while let Some(w) = child {
+                if w.has_css_class("avatar") {
+                    if let Ok(area) = w.clone().downcast::<gtk::DrawingArea>() {
+                        area.set_content_width(px);
+                        area.set_content_height(px);
+                    } else if let Ok(pic) = w.clone().downcast::<gtk::Picture>() {
+                        pic.set_size_request(px, px);
+                    }
+                }
+                child = w.next_sibling();
+            }
+        }
     }
 
     /// Tulis setelan tampilan ke config, tanpa menyentuh API key dari env.
     fn persist_look(&self) {
         let cfg = self.cfg.borrow();
-        Config::save_look(cfg.bg_opacity, cfg.font_size, &cfg.output);
+        Config::save_look(&cfg);
     }
 
     fn handle_ctl(&self, ctl: Ctl) {
@@ -576,7 +689,7 @@ impl Ui {
     }
 
     fn build_row(&self, msg: &ChatMsg) -> gtk::Box {
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 5);
         row.add_css_class("msg");
         row.set_can_target(false);
 
@@ -600,19 +713,11 @@ impl Ui {
 
         let (show_avatars, avatar_size) = {
             let cfg = self.cfg.borrow();
-            (cfg.show_avatars, cfg.avatar_size)
+            (cfg.show_avatars, avatar_px(cfg.avatar_px))
         };
         if show_avatars {
             if let Some(bytes) = &msg.avatar {
-                if let Ok(texture) = gtk::gdk::Texture::from_bytes(&gtk::glib::Bytes::from(&bytes[..]))
-                {
-                    let pic = gtk::Picture::for_paintable(&texture);
-                    pic.set_content_fit(gtk::ContentFit::Cover);
-                    pic.set_can_shrink(true);
-                    pic.set_size_request(avatar_size.max(12), avatar_size.max(12));
-                    pic.set_valign(gtk::Align::Start);
-                    pic.set_can_target(false);
-                    pic.add_css_class("avatar");
+                if let Some(pic) = avatar_widget(bytes, avatar_size) {
                     row.append(&pic);
                 }
             }
@@ -782,4 +887,18 @@ fn schedule_fade(
             });
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::avatar_px;
+
+    #[test]
+    fn ukuran_avatar_dibatasi() {
+        assert_eq!(avatar_px(16), 16);
+        assert_eq!(avatar_px(24), 24);
+        // batas bawah & atas supaya avatar tidak hilang / memenuhi layar
+        assert_eq!(avatar_px(4), 12);
+        assert_eq!(avatar_px(200), 48);
+    }
 }

@@ -25,16 +25,44 @@ pub fn build(
     let window = gtk::Window::builder()
         .application(app)
         .title("Chat YouTube Live")
-        .default_width(470)
-        .resizable(false)
         .build();
+    window.set_default_size(470, 820);
+
+    // Latar gelap khusus kotak pratinjau, supaya kelihatan seperti di atas game.
+    let panel_css = gtk::CssProvider::new();
+    panel_css.load_from_data(
+        ".preview-stage { background-color: rgba(24, 26, 30, 0.92); \
+         border-radius: 8px; padding: 6px; }",
+    );
+    if let Some(display) = gtk::gdk::Display::default() {
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &panel_css,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    }
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 10);
     root.set_margin_top(18);
     root.set_margin_bottom(18);
     root.set_margin_start(18);
     root.set_margin_end(18);
-    window.set_child(Some(&root));
+    // Panel bisa di-scroll kalau layarnya kecil / jendela dikecilkan.
+    let scroll = gtk::ScrolledWindow::new();
+    scroll.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+    scroll.set_max_content_width(470);
+    if let Some(display) = gtk::gdk::Display::default() {
+        let monitor = display
+            .monitors()
+            .item(0)
+            .and_then(|obj| obj.downcast::<gtk::gdk::Monitor>().ok());
+        if let Some(monitor) = monitor {
+            let cap = (f64::from(monitor.geometry().height()) * 0.9) as i32;
+            scroll.set_max_content_height(cap.max(400));
+        }
+    }
+    scroll.set_child(Some(&root));
+    window.set_child(Some(&scroll));
 
     let title = gtk::Label::new(None);
     title.set_markup("<b><big>Overlay Chat YouTube Live</big></b>");
@@ -128,6 +156,44 @@ pub fn build(
     font_row.append(&font);
     root.append(&font_row);
 
+    let avatar_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let avatar_label = gtk::Label::new(Some("Ukuran avatar"));
+    avatar_label.set_xalign(0.0);
+    avatar_label.set_width_chars(14);
+    let avatar = gtk::Scale::with_range(gtk::Orientation::Horizontal, 12.0, 48.0, 1.0);
+    let avatar_start = cfg.avatar_px.clamp(12, 48);
+    avatar.set_value(avatar_start as f64);
+    avatar.set_draw_value(false);
+    avatar.set_hexpand(true);
+    avatar.set_tooltip_text(Some(
+        "Ukuran foto profil di samping tiap pesan chat, dalam piksel.",
+    ));
+    let avatar_value = gtk::Label::new(Some(&format!("{avatar_start} px")));
+    avatar_value.set_width_chars(4);
+    avatar_value.set_xalign(1.0);
+    avatar_row.append(&avatar_label);
+    avatar_row.append(&avatar);
+    avatar_row.append(&avatar_value);
+    root.append(&avatar_row);
+
+    let gap_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let gap_label = gtk::Label::new(Some("Jarak antar pesan"));
+    gap_label.set_xalign(0.0);
+    gap_label.set_width_chars(14);
+    let gap = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 20.0, 1.0);
+    let gap_start = cfg.msg_gap.clamp(0, 20);
+    gap.set_value(f64::from(gap_start));
+    gap.set_draw_value(false);
+    gap.set_hexpand(true);
+    gap.set_tooltip_text(Some("Spasi vertikal antar kotak pesan chat (piksel)."));
+    let gap_value = gtk::Label::new(Some(&format!("{gap_start} px")));
+    gap_value.set_width_chars(4);
+    gap_value.set_xalign(1.0);
+    gap_row.append(&gap_label);
+    gap_row.append(&gap);
+    gap_row.append(&gap_value);
+    root.append(&gap_row);
+
     let monitor_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let monitor_label = gtk::Label::new(Some("Monitor"));
     monitor_label.set_xalign(0.0);
@@ -149,6 +215,20 @@ pub fn build(
     monitor_row.append(&monitor_label);
     monitor_row.append(&monitor);
     root.append(&monitor_row);
+
+    // --- Pratinjau ---
+    root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
+    let preview_title = gtk::Label::new(None);
+    preview_title.set_markup("<b>Pratinjau</b>");
+    preview_title.set_xalign(0.0);
+    root.append(&preview_title);
+
+    let preview = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    preview.set_hexpand(true);
+    preview.add_css_class("preview-stage");
+    fill_preview(&preview, avatar_start);
+    root.append(&preview);
 
     // Nilai terakhir yang benar-benar diterapkan, supaya event kecil dari GTK saat
     // tata letak tidak menimpa setelan tersimpan.
@@ -180,6 +260,40 @@ pub fn build(
             }
             last_font.set(value);
             overlay.set_font_size(value);
+        });
+    }
+
+    let last_avatar = Rc::new(Cell::new(avatar_start));
+    {
+        let overlay = overlay.clone();
+        let avatar_value = avatar_value.clone();
+        let last_avatar = last_avatar.clone();
+        let preview = preview.clone();
+        avatar.connect_value_changed(move |scale| {
+            let px = scale.value().round() as i32;
+            avatar_value.set_text(&format!("{px} px"));
+            if px == last_avatar.get() {
+                return;
+            }
+            last_avatar.set(px);
+            overlay.set_avatar_size(px);
+            fill_preview(&preview, px);
+        });
+    }
+
+    let last_gap = Rc::new(Cell::new(gap_start));
+    {
+        let overlay = overlay.clone();
+        let gap_value = gap_value.clone();
+        let last_gap = last_gap.clone();
+        gap.connect_value_changed(move |scale| {
+            let px = scale.value().round() as i32;
+            gap_value.set_text(&format!("{px} px"));
+            if px == last_gap.get() {
+                return;
+            }
+            last_gap.set(px);
+            overlay.set_gap(px);
         });
     }
 
@@ -354,6 +468,129 @@ pub fn build(
 }
 
 /// Nama konektor monitor yang sedang terpasang, mis. `DP-1`, `HDMI-A-1`.
+/// Isi ulang kotak pratinjau; dipanggil saat ukuran avatar berubah.
+fn fill_preview(container: &gtk::Box, avatar_px: i32) {
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
+
+    container.append(&preview_row(
+        avatar_px,
+        "Budi",
+        "Halo semua, semangat mainnya! 🔥",
+        None,
+        &["msg"],
+        (0.29, 0.52, 0.86),
+    ));
+    container.append(&preview_row(
+        avatar_px,
+        "Sinta",
+        "GG banget tadi 👏",
+        None,
+        &["msg", "member"],
+        (0.33, 0.70, 0.42),
+    ));
+    container.append(&preview_row(
+        avatar_px,
+        "Andi",
+        "Semangat terus, jangan menyerah!",
+        Some("Rp 10.000"),
+        &["msg", "sc3"],
+        (0.85, 0.55, 0.20),
+    ));
+}
+
+/// Satu baris contoh chat dengan gaya yang sama seperti overlay (kelas CSS `.msg`).
+fn preview_row(
+    avatar_px: i32,
+    name: &str,
+    text: &str,
+    amount: Option<&str>,
+    classes: &[&str],
+    color: (f64, f64, f64),
+) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+    for class in classes {
+        row.add_css_class(class);
+    }
+    row.set_can_target(false);
+
+    let initial = name.chars().next().unwrap_or('?').to_string();
+    row.append(&preview_avatar(avatar_px, color, &initial));
+
+    let col = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    col.set_hexpand(true);
+
+    let head = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    let name_label = gtk::Label::new(None);
+    name_label.set_markup(&format!(
+        "<b>{}</b>",
+        gtk::glib::markup_escape_text(name)
+    ));
+    name_label.set_xalign(0.0);
+    name_label.add_css_class("author");
+    head.append(&name_label);
+
+    if let Some(amount) = amount {
+        let amount_label = gtk::Label::new(None);
+        amount_label.set_markup(&format!(
+            "<b>{}</b>",
+            gtk::glib::markup_escape_text(amount)
+        ));
+        amount_label.set_valign(gtk::Align::Center);
+        amount_label.add_css_class("amount");
+        head.append(&amount_label);
+    }
+    col.append(&head);
+
+    let body = gtk::Label::new(None);
+    body.set_markup(&gtk::glib::markup_escape_text(text));
+    body.set_wrap(true);
+    body.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    body.set_xalign(0.0);
+    body.add_css_class("body");
+    col.append(&body);
+
+    row.append(&col);
+    row
+}
+
+/// Avatar contoh: lingkaran berwarna dengan inisial, seukuran avatar asli.
+fn preview_avatar(px: i32, color: (f64, f64, f64), initial: &str) -> gtk::DrawingArea {
+    let area = gtk::DrawingArea::new();
+    area.set_content_width(px);
+    area.set_content_height(px);
+    area.set_valign(gtk::Align::Start);
+    area.set_can_target(false);
+
+    let letter = initial.to_string();
+    area.set_draw_func(move |_, cr, w, h| {
+        let (w, h) = (w as f64, h as f64);
+        let radius = w.min(h) / 2.0;
+        cr.save().ok();
+        cr.arc(w / 2.0, h / 2.0, radius, 0.0, std::f64::consts::TAU);
+        cr.set_source_rgb(color.0, color.1, color.2);
+        cr.fill().ok();
+
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.92);
+        cr.select_font_face(
+            "Sans",
+            gtk::cairo::FontSlant::Normal,
+            gtk::cairo::FontWeight::Bold,
+        );
+        cr.set_font_size(radius * 0.95);
+        if let Ok(ext) = cr.text_extents(&letter) {
+            cr.move_to(
+                w / 2.0 - (ext.width() / 2.0 + ext.x_bearing()),
+                h / 2.0 - (ext.height() / 2.0 + ext.y_bearing()),
+            );
+            let _ = cr.show_text(&letter);
+        }
+        cr.restore().ok();
+    });
+    area
+}
+
 fn monitor_connectors() -> Vec<String> {
     let mut out = Vec::new();
     let Some(display) = gtk::gdk::Display::default() else {
