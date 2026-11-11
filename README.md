@@ -8,6 +8,14 @@ Isi overlay: nama pengirim + badge (owner/mod/member), avatar, emoji (termasuk
 emoji custom kanal), highlight Super Chat/Super Sticker + nominal, dan pesan
 lama memudar otomatis.
 
+![Overlay chat di atas layar](docs/overlay.png)
+
+Panel pengaturannya:
+
+<img src="docs/panel.png" alt="Panel pengaturan ytchat-overlay" width="440">
+
+Gambar di atas memakai contoh pesan, bukan live sungguhan.
+
 ## Kebutuhan
 
 - KDE Plasma 6 dengan sesi **Wayland** (butuh protokol `wlr-layer-shell`).
