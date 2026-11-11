@@ -53,6 +53,7 @@ Tombol di panel:
 | **Mode edit posisi** | Mengaktifkan input pada overlay: geser dengan mouse, lalu matikan lagi untuk menyimpan posisi. |
 | **Sembunyikan / Tampilkan** | Menyembunyikan overlay tanpa memutus chat. |
 | **Bersihkan chat** | Menghapus semua pesan yang sedang tampil. |
+| **Server OBS** | Menyalakan/mematikan server lokal untuk Browser Source OBS (lihat bagian di bawah). |
 | **Keluar** | Menutup aplikasi (overlay ikut hilang). |
 
 Menutup jendela panel juga menghentikan overlay, supaya tidak ada overlay
@@ -78,6 +79,31 @@ Jendela panel bisa diperbesar/diperkecil dan isinya bisa di-scroll, jadi tetap
 terpakai di layar kecil (mis. laptop 1366×768). Ukuran bawaannya 470×820.
 
 Semua setelan di panel tersimpan otomatis ke file config.
+
+## Tampil di OBS Studio
+
+Overlay ini adalah jendela layer-shell, jadi OBS tidak bisa menangkapnya lewat
+Window Capture (yang tertangkap hanya jendela panel). Untuk OBS, aplikasi
+menyediakan halaman web lokal yang dipakai sebagai **Browser Source**:
+
+1. Di panel, gulir ke bagian **OBS Studio**, tekan tombol **Server OBS: mati**
+   sampai berubah jadi **Server OBS: aktif**. Port bawaannya `8765`.
+2. Salin URL yang muncul (`http://127.0.0.1:8765/`) dengan tombol **Salin**.
+3. Di OBS: **Sources → + → Browser**, tempel URL tadi.
+4. Atur lebar/tinggi source sesuai keinginan (mis. 420×500). Latarnya transparan,
+   jadi tidak perlu chroma key.
+5. Jangan centang *Shutdown source when not visible* kalau ingin chat tetap
+   tersambung saat source disembunyikan.
+
+Isi chat, warna Super Chat, badge member, emoji, avatar, ukuran font, opacity,
+jarak antar pesan, dan fade memakai setelan yang sama dengan overlay di layar.
+Menggeser slider di panel juga langsung mengubah halaman OBS tanpa perlu reload,
+dan tombol **Bersihkan chat** mengosongkan keduanya sekaligus.
+
+Server hanya mendengarkan di `127.0.0.1` (tidak bisa diakses dari jaringan lain),
+mati secara bawaan, dan ikut berhenti saat aplikasi ditutup. Bila port `8765`
+sudah dipakai program lain, panel menampilkan pesan gagal — matikan program itu
+atau pakai satu instance aplikasi saja.
 
 ## File config
 

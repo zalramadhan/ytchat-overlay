@@ -19,6 +19,8 @@ pub fn run(
     rx: async_channel::Receiver<Event>,
     job_tx: async_channel::Sender<JobRequest>,
     start_video: Option<String>,
+    obs_hub: crate::obs::Hub,
+    obs_ctl: crate::obs::ObsCtl,
 ) {
     let app = gtk::Application::builder().application_id(APP_ID).build();
     let cfg_for_activate = cfg.clone();
@@ -37,8 +39,14 @@ pub fn run(
             app.quit();
             return;
         }
-        let overlay = Rc::new(build(app, &cfg_for_activate, rx.clone()));
-        let panel = crate::control::build(app, &cfg_for_activate, overlay.clone(), job_tx.clone());
+        let overlay = Rc::new(build(app, &cfg_for_activate, rx.clone(), obs_hub.clone()));
+        let panel = crate::control::build(
+            app,
+            &cfg_for_activate,
+            overlay.clone(),
+            job_tx.clone(),
+            obs_ctl.clone(),
+        );
         *existing.borrow_mut() = Some(panel.clone());
 
         match &start_video {
@@ -224,7 +232,12 @@ fn create_window(
     window
 }
 
-fn build(app: &gtk::Application, cfg: &Config, rx: async_channel::Receiver<Event>) -> Overlay {
+fn build(
+    app: &gtk::Application,
+    cfg: &Config,
+    rx: async_channel::Receiver<Event>,
+    obs: crate::obs::Hub,
+) -> Overlay {
     let display = gtk::gdk::Display::default();
     let monitor = cfg.output.trim();
     let monitor = match &display {
@@ -270,6 +283,7 @@ fn build(app: &gtk::Application, cfg: &Config, rx: async_channel::Receiver<Event
         drag_from: Cell::new((cfg.x, cfg.y)),
         status_sink: RefCell::new(None),
         editing_sink: RefCell::new(None),
+        obs,
     });
 
     // Geser posisi saat mode edit (input region aktif hanya di mode itu).
@@ -342,7 +356,7 @@ fn find_monitor(display: &gtk::gdk::Display, name: &str) -> Option<gtk::gdk::Mon
     None
 }
 
-fn css_color(value: &str) -> String {
+pub(crate) fn css_color(value: &str) -> String {
     let t = value.trim();
     let hex = t.len() >= 4
         && t.len() <= 9
@@ -540,6 +554,8 @@ struct Ui {
     drag_from: Cell<(i32, i32)>,
     status_sink: RefCell<Option<Rc<dyn Fn(&str)>>>,
     editing_sink: RefCell<Option<Rc<dyn Fn(bool)>>>,
+    /// Halaman OBS memakai setelan tampilan yang sama.
+    obs: crate::obs::Hub,
 }
 
 impl Ui {
@@ -564,6 +580,7 @@ impl Ui {
             }
         }
         install_css(&self.provider, &self.cfg.borrow());
+        self.obs.set_style(&self.cfg.borrow());
     }
 
     /// Ubah ukuran avatar dan sesuaikan avatar pada baris yang sudah tampil.
@@ -590,6 +607,7 @@ impl Ui {
                 child = w.next_sibling();
             }
         }
+        self.obs.set_style(&self.cfg.borrow());
     }
 
     /// Tulis setelan tampilan ke config, tanpa menyentuh API key dari env.

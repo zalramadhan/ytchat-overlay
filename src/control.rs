@@ -1,6 +1,8 @@
-use crate::{config::Config, model::JobRequest, overlay::Overlay, youtube::video_id};
+use crate::{
+    config::Config, model::JobRequest, obs::ObsCtl, overlay::Overlay, youtube::video_id,
+};
 use gtk::prelude::*;
-use std::{cell::Cell, rc::Rc};
+use std::{cell::Cell, rc::Rc, time::Duration};
 
 pub struct Control {
     pub window: gtk::Window,
@@ -21,6 +23,7 @@ pub fn build(
     cfg: &Config,
     overlay: Rc<Overlay>,
     job_tx: async_channel::Sender<JobRequest>,
+    obs: ObsCtl,
 ) -> Rc<Control> {
     let window = gtk::Window::builder()
         .application(app)
@@ -229,6 +232,103 @@ pub fn build(
     preview.add_css_class("preview-stage");
     fill_preview(&preview, avatar_start);
     root.append(&preview);
+
+    // --- OBS Studio ---
+    root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
+    let obs_title = gtk::Label::new(None);
+    obs_title.set_markup("<b>OBS Studio</b>");
+    obs_title.set_xalign(0.0);
+    root.append(&obs_title);
+
+    let obs_desc = gtk::Label::new(Some(
+        "Nyalakan server di bawah, lalu di OBS tambahkan source Browser dan tempel \
+         URL-nya. Latar transparan dan gayanya sama dengan overlay.",
+    ));
+    obs_desc.set_wrap(true);
+    obs_desc.set_xalign(0.0);
+    obs_desc.add_css_class("dim-label");
+    root.append(&obs_desc);
+
+    let obs_toggle = gtk::ToggleButton::with_label("Server OBS: mati");
+    root.append(&obs_toggle);
+
+    let obs_url_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let obs_url = gtk::Entry::new();
+    obs_url.set_text(&obs.url());
+    obs_url.set_editable(false);
+    obs_url.set_hexpand(true);
+    let obs_copy = gtk::Button::with_label("Salin");
+    obs_copy.set_sensitive(false);
+    obs_url_row.append(&obs_url);
+    obs_url_row.append(&obs_copy);
+    root.append(&obs_url_row);
+
+    let obs_status = gtk::Label::new(Some(
+        "Server mati. Aktifkan untuk memakai chat di OBS.",
+    ));
+    obs_status.set_wrap(true);
+    obs_status.set_xalign(0.0);
+    obs_status.add_css_class("dim-label");
+    root.append(&obs_status);
+
+    // Tombol mengikuti keadaan server sebenarnya (mis. gagal karena port dipakai).
+    let obs_syncing = Rc::new(Cell::new(false));
+    {
+        let obs_ctl = obs.clone();
+        let obs_syncing = obs_syncing.clone();
+        obs_toggle.connect_toggled(move |btn| {
+            if obs_syncing.get() {
+                return;
+            }
+            if btn.is_active() {
+                obs_ctl.start();
+            } else {
+                obs_ctl.stop();
+            }
+        });
+    }
+    {
+        let obs_url = obs_url.clone();
+        obs_copy.connect_clicked(move |btn| {
+            if let Some(display) = gtk::gdk::Display::default() {
+                display.clipboard().set_text(&obs_url.text());
+                btn.set_label("Tersalin");
+            }
+        });
+    }
+    {
+        let obs_ctl = obs.clone();
+        let obs_toggle = obs_toggle.clone();
+        let obs_status = obs_status.clone();
+        let obs_url = obs_url.clone();
+        let obs_copy = obs_copy.clone();
+        let obs_syncing = obs_syncing.clone();
+        gtk::glib::timeout_add_local(Duration::from_millis(300), move || {
+            let state = obs_ctl.state();
+            if obs_url.text() != obs_ctl.url() {
+                obs_url.set_text(&obs_ctl.url());
+            }
+            obs_syncing.set(true);
+            obs_toggle.set_active(state.running);
+            obs_toggle.set_label(if state.running {
+                "Server OBS: aktif"
+            } else {
+                "Server OBS: mati"
+            });
+            obs_syncing.set(false);
+            obs_copy.set_sensitive(state.running);
+            match (state.running, &state.error) {
+                (true, _) => obs_status
+                    .set_text("Aktif. Di OBS: Sources → + → Browser → tempel URL di atas."),
+                (false, Some(err)) => obs_status.set_text(&format!("Gagal: {err}")),
+                (false, None) => {
+                    obs_status.set_text("Server mati. Aktifkan untuk memakai chat di OBS.")
+                }
+            }
+            gtk::glib::ControlFlow::Continue
+        });
+    }
 
     // Nilai terakhir yang benar-benar diterapkan, supaya event kecil dari GTK saat
     // tata letak tidak menimpa setelan tersimpan.

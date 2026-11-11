@@ -2,6 +2,7 @@ mod config;
 mod control;
 mod ipc;
 mod model;
+mod obs;
 mod overlay;
 mod youtube;
 
@@ -70,9 +71,14 @@ fn main() -> ExitCode {
     }
 
     let (tx, rx) = async_channel::unbounded::<Event>();
+    // Event yang sama dipakai dua tampilan: overlay di layar dan halaman OBS.
+    let (tx_ui, rx_ui) = async_channel::unbounded::<Event>();
     let (job_tx, job_rx) = async_channel::unbounded::<JobRequest>();
 
+    let obs_hub = obs::Hub::new(&cfg);
+    let obs_ctl = obs::ObsCtl::spawn(obs_hub.clone(), obs::DEFAULT_PORT);
     let base_cfg = cfg.clone();
+    let hub_tee = obs_hub.clone();
     std::thread::spawn(move || {
         let rt = match tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -87,6 +93,15 @@ fn main() -> ExitCode {
         rt.block_on(async move {
             let tx_ipc = tx.clone();
             tokio::spawn(async move { ipc::serve(tx_ipc).await });
+
+            tokio::spawn(async move {
+                while let Ok(ev) = rx.recv().await {
+                    hub_tee.publish(&ev);
+                    if tx_ui.send(ev).await.is_err() {
+                        break;
+                    }
+                }
+            });
 
             // Satu job aktif pada satu waktu: permintaan baru membatalkan yang lama.
             let mut job: Option<tokio::task::JoinHandle<()>> = None;
@@ -107,6 +122,6 @@ fn main() -> ExitCode {
         });
     });
 
-    overlay::run(cfg, rx, job_tx, start_video);
+    overlay::run(cfg, rx_ui, job_tx, start_video, obs_hub, obs_ctl);
     ExitCode::SUCCESS
 }
