@@ -4,6 +4,7 @@ mod ipc;
 mod model;
 mod obs;
 mod overlay;
+mod stats;
 mod webcam;
 mod youtube;
 

@@ -50,6 +50,14 @@ pub struct Config {
     pub cam_y: i32,
     /// Cermin gambar, seperti cermin saat melihat diri sendiri.
     pub cam_mirror: bool,
+    /// Rasio gambar webcam: "4:3" (bawaan kamera), "16:9", atau "1:1".
+    pub cam_ratio: String,
+
+    // Statistik live di layar (penonton, subscriber, total tayangan)
+    pub stats: bool,
+    pub stats_x: i32,
+    pub stats_y: i32,
+    pub stats_font_size: f64,
 }
 
 impl Default for Config {
@@ -80,6 +88,11 @@ impl Default for Config {
             cam_x: 30,
             cam_y: 720,
             cam_mirror: true,
+            cam_ratio: "4:3".into(),
+            stats: false,
+            stats_x: 470,
+            stats_y: 200,
+            stats_font_size: 16.0,
         }
     }
 }
@@ -147,6 +160,17 @@ impl Config {
         c.cam_x = cfg.cam_x;
         c.cam_y = cfg.cam_y;
         c.cam_mirror = cfg.cam_mirror;
+        c.cam_ratio = cfg.cam_ratio.clone();
+        c.save();
+    }
+
+    /// Simpan setelan jendela statistik live (aktif, posisi, ukuran font).
+    pub fn save_stats(cfg: &Config) {
+        let mut c = Self::read_file().unwrap_or_default();
+        c.stats = cfg.stats;
+        c.stats_x = cfg.stats_x;
+        c.stats_y = cfg.stats_y;
+        c.stats_font_size = cfg.stats_font_size;
         c.save();
     }
 

@@ -255,6 +255,8 @@ impl Hub {
             Event::Ctl(crate::model::Ctl::Clear) => {
                 self.push(Arc::from(r#"{"type":"clear"}"#), false);
             }
+            // Statistik live hanya untuk layar; halaman OBS tetap berisi chat.
+            Event::Stats(_) => {}
             Event::Ctl(_) => {}
         }
     }

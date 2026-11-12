@@ -87,8 +87,53 @@ pub struct JobRequest {
     pub api_key: String,
 }
 
+/// Angka statistik live yang ditampilkan di layar.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LiveStats {
+    /// Penonton yang sedang menonton saat ini (`concurrentViewers`).
+    pub viewers: Option<u64>,
+    /// Jumlah subscriber kanal.
+    pub subscribers: Option<u64>,
+    /// Total tayangan video live.
+    pub views: Option<u64>,
+}
+
+impl LiveStats {
+    /// Angka dengan pemisah ribuan gaya Indonesia, mis. `12.345`.
+    pub fn format(value: Option<u64>) -> String {
+        let Some(v) = value else {
+            return "–".to_string();
+        };
+        let digits = v.to_string();
+        let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+        for (i, c) in digits.chars().enumerate() {
+            if i > 0 && (digits.len() - i) % 3 == 0 {
+                out.push('.');
+            }
+            out.push(c);
+        }
+        out
+    }
+}
+
 pub enum Event {
     Chat(ChatMsg),
     Status(String),
+    Stats(LiveStats),
     Ctl(Ctl),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn angka_statistik_memakai_pemisah_ribuan() {
+        assert_eq!(LiveStats::format(Some(0)), "0");
+        assert_eq!(LiveStats::format(Some(999)), "999");
+        assert_eq!(LiveStats::format(Some(1234)), "1.234");
+        assert_eq!(LiveStats::format(Some(1_234_567)), "1.234.567");
+        // Angka yang tidak tersedia (mis. kanal menyembunyikan subscriber).
+        assert_eq!(LiveStats::format(None), "–");
+    }
 }

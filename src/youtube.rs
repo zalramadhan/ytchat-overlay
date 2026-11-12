@@ -1,17 +1,19 @@
 use crate::{
     config::Config,
-    model::{emote_key, ChatMsg, Emote, Event, Kind},
+    model::{emote_key, ChatMsg, Emote, Event, Kind, LiveStats},
 };
 use async_channel::Sender;
 use serde::Deserialize;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::time::sleep;
 
 const API: &str = "https://www.googleapis.com/youtube/v3";
+/// Statistik live tidak perlu secepat chat; 30 detik menghemat kuota API.
+const STATS_EVERY: Duration = Duration::from_secs(30);
 const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 // ---------- bentuk JSON ----------
@@ -24,11 +26,44 @@ struct VideoList {
 struct VideoItem {
     #[serde(rename = "liveStreamingDetails")]
     live: Option<Live>,
+    snippet: Option<VideoSnippet>,
+    statistics: Option<Counts>,
 }
 #[derive(Deserialize)]
 struct Live {
     #[serde(rename = "activeLiveChatId")]
     chat_id: Option<String>,
+    /// Jumlah penonton saat ini; hanya ada selama live berlangsung.
+    #[serde(rename = "concurrentViewers")]
+    viewers: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VideoSnippet {
+    channel_id: Option<String>,
+}
+/// Angka dari `part=statistics` (dikirim API sebagai string).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Counts {
+    view_count: Option<String>,
+    subscriber_count: Option<String>,
+}
+#[derive(Deserialize)]
+struct ChannelList {
+    #[serde(default)]
+    items: Vec<ChannelItem>,
+}
+#[derive(Deserialize)]
+struct ChannelItem {
+    statistics: Option<Counts>,
+}
+
+/// Hasil satu panggilan `videos.list`: ruang chat + angka awal statistik.
+struct VideoInfo {
+    chat_id: String,
+    channel_id: Option<String>,
+    stats: LiveStats,
 }
 
 #[derive(Deserialize)]
@@ -330,10 +365,23 @@ async fn load_emojis(client: &reqwest::Client, vid: &str) -> HashMap<String, Emo
     map
 }
 
-async fn live_chat_id(client: &reqwest::Client, key: &str, vid: &str) -> Result<String, String> {
+fn parse_count(value: Option<&str>) -> Option<u64> {
+    value.and_then(|s| s.trim().parse::<u64>().ok())
+}
+
+/// Ambil ruang chat, ID kanal, dan statistik awal dari satu panggilan `videos.list`.
+async fn video_info(
+    client: &reqwest::Client,
+    key: &str,
+    vid: &str,
+) -> Result<VideoInfo, String> {
     let r = client
         .get(format!("{API}/videos"))
-        .query(&[("part", "liveStreamingDetails"), ("id", vid), ("key", key)])
+        .query(&[
+            ("part", "liveStreamingDetails,snippet,statistics"),
+            ("id", vid),
+            ("key", key),
+        ])
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -342,13 +390,101 @@ async fn live_chat_id(client: &reqwest::Client, key: &str, vid: &str) -> Result<
     if !st.is_success() {
         return Err(api_err(&body));
     }
-    let v: VideoList = serde_json::from_str(&body).map_err(|e| e.to_string())?;
-    v.items
+    info_from_body(&body)
+}
+
+/// Pisahkan pembacaan JSON dari HTTP-nya supaya bisa diuji tanpa jaringan.
+fn info_from_body(body: &str) -> Result<VideoInfo, String> {
+    let v: VideoList = serde_json::from_str(body).map_err(|e| e.to_string())?;
+    let item = v
+        .items
         .into_iter()
         .next()
-        .and_then(|i| i.live)
-        .and_then(|l| l.chat_id)
-        .ok_or_else(|| "video tidak ditemukan / belum live (activeLiveChatId kosong)".to_string())
+        .ok_or_else(|| "video tidak ditemukan".to_string())?;
+    let live = item.live.as_ref();
+    let chat_id = live
+        .and_then(|l| l.chat_id.clone())
+        .ok_or_else(|| "belum live (activeLiveChatId kosong)".to_string())?;
+    let viewers = parse_count(live.and_then(|l| l.viewers.as_deref()));
+    let views = parse_count(item.statistics.as_ref().and_then(|s| s.view_count.as_deref()));
+    Ok(VideoInfo {
+        chat_id,
+        channel_id: item.snippet.and_then(|s| s.channel_id),
+        stats: LiveStats {
+            viewers,
+            subscribers: None,
+            views,
+        },
+    })
+}
+
+/// Jumlah subscriber kanal; `None` kalau kanal menyembunyikannya.
+async fn channel_subscribers(
+    client: &reqwest::Client,
+    key: &str,
+    channel: &str,
+) -> Option<u64> {
+    let r = client
+        .get(format!("{API}/channels"))
+        .query(&[("part", "statistics"), ("id", channel), ("key", key)])
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+        .ok()?;
+    let body = r.text().await.ok()?;
+    let list: ChannelList = serde_json::from_str(&body).ok()?;
+    list.items
+        .into_iter()
+        .next()
+        .and_then(|c| c.statistics)
+        .and_then(|s| parse_count(s.subscriber_count.as_deref()))
+}
+
+/// Statistik terkini: penonton sekarang, total tayangan, dan subscriber.
+async fn fetch_stats(
+    client: &reqwest::Client,
+    key: &str,
+    vid: &str,
+    channel: Option<&str>,
+    previous: LiveStats,
+) -> Result<LiveStats, String> {
+    let r = client
+        .get(format!("{API}/videos"))
+        .query(&[
+            ("part", "liveStreamingDetails,statistics"),
+            ("id", vid),
+            ("key", key),
+        ])
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let st = r.status();
+    let body = r.text().await.map_err(|e| e.to_string())?;
+    if !st.is_success() {
+        return Err(api_err(&body));
+    }
+    let mut stats = stats_from_body(&body, previous)?;
+    if let Some(channel) = channel {
+        if let Some(subs) = channel_subscribers(client, key, channel).await {
+            stats.subscribers = Some(subs);
+        }
+    }
+    Ok(stats)
+}
+
+fn stats_from_body(body: &str, previous: LiveStats) -> Result<LiveStats, String> {
+    let list: VideoList = serde_json::from_str(body).map_err(|e| e.to_string())?;
+    let item = list
+        .items
+        .into_iter()
+        .next()
+        .ok_or_else(|| "video tidak ditemukan".to_string())?;
+    Ok(LiveStats {
+        viewers: parse_count(item.live.as_ref().and_then(|l| l.viewers.as_deref())),
+        subscribers: previous.subscribers,
+        views: parse_count(item.statistics.as_ref().and_then(|s| s.view_count.as_deref())),
+    })
 }
 
 async fn fetch_bytes(
@@ -511,9 +647,9 @@ pub async fn run(cfg: Config, tx: Sender<Event>) {
     };
 
     say(&tx, "Menghubungkan ke live chat…").await;
-    let chat_id = loop {
-        match live_chat_id(&client, &cfg.api_key, &vid).await {
-            Ok(id) => break id,
+    let info = loop {
+        match video_info(&client, &cfg.api_key, &vid).await {
+            Ok(info) => break info,
             Err(e) => {
                 let wait = if e.contains("quotaExceeded") { 300 } else { 15 };
                 say(&tx, format!("Gagal: {e} (coba lagi {wait} dtk)")).await;
@@ -523,6 +659,21 @@ pub async fn run(cfg: Config, tx: Sender<Event>) {
     };
     say(&tx, "Tersambung ✔").await;
 
+    let VideoInfo {
+        chat_id,
+        channel_id,
+        stats: initial_stats,
+    } = info;
+
+    // Statistik awal: subscribers butuh satu panggilan terpisah ke kanal.
+    let mut stats = initial_stats;
+    if let Some(channel) = &channel_id {
+        if let Some(subs) = channel_subscribers(&client, &cfg.api_key, channel).await {
+            stats.subscribers = Some(subs);
+        }
+    }
+    let _ = tx.send(Event::Stats(stats)).await;
+
     // Daftar emoji diambil sekali dari halaman live chat; gagal = tanpa gambar emoji.
     let emojis = load_emojis(&client, &vid).await;
     if emojis.is_empty() {
@@ -531,11 +682,33 @@ pub async fn run(cfg: Config, tx: Sender<Event>) {
 
     let mut cache: HashMap<String, Option<Vec<u8>>> = HashMap::new();
     let mut token: Option<String> = None;
+    let mut next_stats = Instant::now() + STATS_EVERY;
     let mut first = true;
     let mut seen: HashSet<String> = HashSet::new();
     let mut seen_order: VecDeque<String> = VecDeque::new();
 
     loop {
+        // Statistik diperbarui lebih jarang daripada chat (hemat kuota).
+        if Instant::now() >= next_stats {
+            match fetch_stats(
+                &client,
+                &cfg.api_key,
+                &vid,
+                channel_id.as_deref(),
+                stats,
+            )
+            .await
+            {
+                Ok(fresh) if fresh != stats => {
+                    stats = fresh;
+                    let _ = tx.send(Event::Stats(stats)).await;
+                }
+                Ok(_) => {}
+                Err(e) => eprintln!("Statistik live gagal: {e}"),
+            }
+            next_stats = Instant::now() + STATS_EVERY;
+        }
+
         let mut q: Vec<(&str, String)> = vec![
             ("liveChatId", chat_id.clone()),
             ("part", "snippet,authorDetails".into()),
@@ -661,6 +834,43 @@ mod tests {
             Some(EmojiDef::Char(c)) => assert_eq!(c, "✨"),
             _ => panic!("emoji standar tidak terdeteksi"),
         }
+    }
+
+    #[test]
+    fn statistik_dan_kanal_terbaca_dari_json() {
+        let body = r#"{"items":[{
+            "snippet":{"channelId":"UCabc"},
+            "statistics":{"viewCount":"45678"},
+            "liveStreamingDetails":{"activeLiveChatId":"chat1","concurrentViewers":"1234"}
+        }]}"#;
+        let info = info_from_body(body).expect("info video");
+        assert_eq!(info.chat_id, "chat1");
+        assert_eq!(info.channel_id.as_deref(), Some("UCabc"));
+        assert_eq!(info.stats.viewers, Some(1234));
+        assert_eq!(info.stats.views, Some(45678));
+        assert_eq!(info.stats.subscribers, None);
+    }
+
+    #[test]
+    fn subscriber_lama_dipertahankan_saat_angkanya_hilang() {
+        let previous = LiveStats {
+            viewers: Some(10),
+            subscribers: Some(777),
+            views: Some(1),
+        };
+        let body = r#"{"items":[{"statistics":{},"liveStreamingDetails":{}}]}"#;
+        let stats = stats_from_body(body, previous).expect("statistik");
+        assert_eq!(stats.viewers, None);
+        assert_eq!(stats.views, None);
+        assert_eq!(stats.subscribers, Some(777));
+    }
+
+    #[test]
+    fn angka_dari_api_dibaca_aman() {
+        assert_eq!(parse_count(None), None);
+        assert_eq!(parse_count(Some("")), None);
+        assert_eq!(parse_count(Some("abc")), None);
+        assert_eq!(parse_count(Some(" 9876 ")), Some(9876));
     }
 
     #[test]

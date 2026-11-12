@@ -6,7 +6,8 @@ posisinya bisa digeser dengan mouse saat mode edit.
 
 Isi overlay: nama pengirim + badge (owner/mod/member), avatar, emoji (termasuk
 emoji custom kanal), highlight Super Chat/Super Sticker + nominal, dan pesan
-lama memudar otomatis. Ada juga **overlay webcam** di layar (terpisah dari OBS).
+lama memudar otomatis. Ada juga **overlay webcam** dan kartu **statistik live**
+(penonton, subscriber, total tayangan) di layar, terpisah dari OBS.
 
 ![Overlay chat di atas layar](docs/overlay.png)
 
@@ -65,6 +66,7 @@ Tombol di panel:
 | **Sembunyikan / Tampilkan** | Menyembunyikan overlay tanpa memutus chat. |
 | **Bersihkan chat** | Menghapus semua pesan yang sedang tampil. |
 | **Server OBS** | Menyalakan/mematikan server lokal untuk Browser Source OBS (lihat bagian di bawah). |
+| **Webcam / Statistik** | Menyalakan jendela webcam atau kartu statistik live di layar (lihat bagiannya masing-masing). |
 | **Keluar** | Menutup aplikasi (overlay ikut hilang). |
 
 Menutup jendela panel juga menghentikan overlay, supaya tidak ada overlay
@@ -125,9 +127,11 @@ sama dengan overlay chat.
 1. Di panel, gulir ke bagian **Webcam di layar**, pilih **Perangkat**
    (biasanya `/dev/video0`).
 2. Tekan tombol **Webcam: mati** sampai berubah jadi **Webcam: aktif**.
-3. Atur **Ukuran** (lebar gambar di layar; tingginya mengikuti rasio kamera) dan
-   centang **Cermin** kalau ingin gambarnya dibalik seperti cermin.
-4. Untuk memindahkan: aktifkan **Mode edit posisi**, geser jendela webcam (dan
+3. Atur **Ukuran** (lebar gambar di layar) dan **Rasio** — `4:3`, `16:9`, atau
+   `1:1`. Gambar dipotong mengikuti rasio (bukan diregangkan), jadi tidak ada
+   wajah yang lonjong.
+4. Centang **Cermin** kalau ingin gambarnya dibalik seperti cermin.
+5. Untuk memindahkan: aktifkan **Mode edit posisi**, geser jendela webcam (dan
    chat) dengan mouse, lalu matikan lagi untuk menyimpan posisinya.
 
 Status di bawah tombol menunjukkan hasilnya, mis. `Kamera aktif: video0 640×480
@@ -137,6 +141,28 @@ menyambung lagi tiap beberapa detik dan menampilkan pesan gagalnya.
 Webcam hanya untuk layar: halaman Browser Source OBS tetap berisi chat saja.
 Kalau ingin webcam ikut ke OBS, tambahkan source **Video Capture Device**
 biasa di OBS.
+
+## Statistik live
+
+Kartu kecil berisi tiga angka selama live berlangsung:
+
+| Baris | Isinya |
+|---|---|
+| **Penonton** | Jumlah orang yang sedang menonton saat ini (`concurrentViewers`). |
+| **Subscriber** | Jumlah subscriber kanal pemilik live. Disembunyikan kanal? Tampil `–`. |
+| **Total view** | Total tayangan video live itu sampai sekarang. |
+
+Nyalakan lewat tombol **Statistik: mati** di bagian **Statistik live** pada panel,
+lalu atur **Ukuran font**. Kartunya klik-tembus dan posisinya digeser lewat
+**Mode edit posisi**, sama seperti chat dan webcam.
+
+Angka diperbarui tiap ±30 detik (bukan tiap detik) supaya kuota API tetap aman:
+sekali pembaruan memakai 2 unit (satu untuk video, satu untuk kanal). Selama live
+belum tersambung, kartunya menampilkan `–`.
+
+Kartu ini hanya tampil di layar; halaman Browser Source OBS tetap berisi chat
+saja. Kalau ingin angka penonton ikut di OBS, pakai widget bawaan OBS atau
+browser source terpisah.
 
 ## File config
 
@@ -172,6 +198,10 @@ nilainya akan tertulis sendiri sebagai `avatar_px` begitu kamu menggeser slider.
 | `cam_width` | `280` | Lebar gambar webcam di layar (piksel). Tinggi mengikuti rasio kamera. |
 | `cam_x`, `cam_y` | `30`, `720` | Posisi jendela webcam (piksel dari pojok kiri atas monitor). |
 | `cam_mirror` | `true` | Balik gambar seperti cermin. |
+| `cam_ratio` | `"4:3"` | Rasio gambar webcam: `"4:3"`, `"16:9"`, atau `"1:1"`. |
+| `stats` | `false` | Tampilkan kartu statistik live. |
+| `stats_x`, `stats_y` | `470`, `200` | Posisi kartu statistik (piksel dari pojok kiri atas monitor). |
+| `stats_font_size` | `16.0` | Ukuran teks kartu statistik (10–40 px). |
 
 ## Pemakaian lewat terminal (opsional)
 
@@ -187,7 +217,7 @@ ytchat-overlay ctl quit                      # keluar dari aplikasi
 ## Catatan
 
 - Kuota API gratis 10.000 unit/hari; polling tiap 5 detik biasanya cukup untuk
-  beberapa jam pemakaian.
+  beberapa jam pemakaian. Statistik live menambah 2 unit tiap ±30 detik.
 - Emoji custom diambil sekali dari halaman live chat. Kalau peta emoji tidak
   tersedia, emoji custom tampil sebagai teks `:nama:`.
 - Kalau ikon belum muncul di menu setelah install: jalankan `kbuildsycoca6`

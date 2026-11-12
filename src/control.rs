@@ -1,6 +1,6 @@
 use crate::{
-    config::Config, model::JobRequest, obs::ObsCtl, overlay::Overlay, webcam::Webcam,
-    youtube::video_id,
+    config::Config, model::JobRequest, obs::ObsCtl, overlay::Overlay, stats::Stats,
+    webcam::Webcam, youtube::video_id,
 };
 use gtk::prelude::*;
 use std::{cell::Cell, rc::Rc, time::Duration};
@@ -24,6 +24,7 @@ pub fn build(
     cfg: &Config,
     overlay: Rc<Overlay>,
     webcam: Webcam,
+    stats: Stats,
     job_tx: async_channel::Sender<JobRequest>,
     obs: ObsCtl,
 ) -> Rc<Control> {
@@ -306,6 +307,26 @@ pub fn build(
     cam_size_row.append(&cam_size_value);
     root.append(&cam_size_row);
 
+    let cam_ratio_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let cam_ratio_label = gtk::Label::new(Some("Rasio"));
+    cam_ratio_label.set_xalign(0.0);
+    cam_ratio_label.set_width_chars(14);
+    let cam_ratios = ["4:3", "16:9", "1:1"];
+    let cam_ratio = gtk::DropDown::from_strings(&cam_ratios);
+    cam_ratio.set_hexpand(true);
+    cam_ratio.set_halign(gtk::Align::End);
+    let ratio_index = cam_ratios
+        .iter()
+        .position(|r| *r == cfg.cam_ratio.trim())
+        .unwrap_or(0) as u32;
+    cam_ratio.set_selected(ratio_index);
+    cam_ratio.set_tooltip_text(Some(
+        "Bentuk gambar webcam. Gambar dipotong mengikuti rasio ini, bukan diregangkan.",
+    ));
+    cam_ratio_row.append(&cam_ratio_label);
+    cam_ratio_row.append(&cam_ratio);
+    root.append(&cam_ratio_row);
+
     let cam_mirror_toggle = gtk::CheckButton::with_label("Cermin (mirror)");
     cam_mirror_toggle.set_active(cfg.cam_mirror);
     cam_mirror_toggle.set_tooltip_text(Some(
@@ -322,6 +343,57 @@ pub fn build(
     cam_status.set_xalign(0.0);
     cam_status.add_css_class("dim-label");
     root.append(&cam_status);
+
+    // --- Statistik live ---
+    root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
+    let stats_title = gtk::Label::new(None);
+    stats_title.set_markup("<b>Statistik live</b>");
+    stats_title.set_xalign(0.0);
+    root.append(&stats_title);
+
+    let stats_desc = gtk::Label::new(Some(
+        "Jumlah penonton yang sedang menonton, subscriber kanal, dan total \
+         tayangan live. Angkanya diperbarui tiap ±30 detik.",
+    ));
+    stats_desc.set_wrap(true);
+    stats_desc.set_xalign(0.0);
+    stats_desc.add_css_class("dim-label");
+    root.append(&stats_desc);
+
+    let stats_toggle = gtk::ToggleButton::with_label(if cfg.stats {
+        "Statistik: aktif"
+    } else {
+        "Statistik: mati"
+    });
+    stats_toggle.set_active(cfg.stats);
+    root.append(&stats_toggle);
+
+    let stats_size_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let stats_size_label = gtk::Label::new(Some("Ukuran font"));
+    stats_size_label.set_xalign(0.0);
+    stats_size_label.set_width_chars(14);
+    let stats_size_start = cfg.stats_font_size.clamp(10.0, 40.0);
+    let stats_size = gtk::Scale::with_range(gtk::Orientation::Horizontal, 10.0, 40.0, 1.0);
+    stats_size.set_value(stats_size_start);
+    stats_size.set_draw_value(false);
+    stats_size.set_hexpand(true);
+    stats_size.set_tooltip_text(Some("Ukuran teks kartu statistik (piksel)."));
+    let stats_size_value = gtk::Label::new(Some(&format!("{:.0} px", stats_size_start)));
+    stats_size_value.set_width_chars(4);
+    stats_size_value.set_xalign(1.0);
+    stats_size_row.append(&stats_size_label);
+    stats_size_row.append(&stats_size);
+    stats_size_row.append(&stats_size_value);
+    root.append(&stats_size_row);
+
+    let stats_hint = gtk::Label::new(Some("\
+         Posisinya digeser lewat Mode edit posisi, sama seperti chat dan webcam.",
+    ));
+    stats_hint.set_wrap(true);
+    stats_hint.set_xalign(0.0);
+    stats_hint.add_css_class("dim-label");
+    root.append(&stats_hint);
 
     // --- OBS Studio ---
     root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
@@ -490,6 +562,7 @@ pub fn build(
     {
         let overlay = overlay.clone();
         let webcam = webcam.clone();
+        let stats = stats.clone();
         monitor.connect_selected_notify(move |dropdown| {
             let index = dropdown.selected();
             let connector = if index == 0 {
@@ -502,6 +575,7 @@ pub fn build(
             };
             overlay.set_monitor(&connector);
             webcam.set_monitor(&connector);
+            stats.set_monitor(&connector);
         });
     }
 
@@ -545,6 +619,42 @@ pub fn build(
         let cam_status = cam_status.clone();
         webcam.on_status(move |text| cam_status.set_text(text));
     }
+    {
+        let webcam = webcam.clone();
+        cam_ratio.connect_selected_notify(move |dropdown| {
+            if let Some(ratio) = cam_ratios.get(dropdown.selected() as usize) {
+                webcam.set_ratio(ratio);
+            }
+        });
+    }
+
+    // --- Statistik live ---
+    {
+        let stats = stats.clone();
+        stats_toggle.connect_toggled(move |btn| {
+            let on = btn.is_active();
+            btn.set_label(if on {
+                "Statistik: aktif"
+            } else {
+                "Statistik: mati"
+            });
+            stats.set_enabled(on);
+        });
+    }
+    {
+        let stats = stats.clone();
+        let stats_size_value = stats_size_value.clone();
+        let last_stats_size = Rc::new(Cell::new(stats_size_start));
+        stats_size.connect_value_changed(move |scale| {
+            let px = scale.value().round();
+            stats_size_value.set_text(&format!("{px:.0} px"));
+            if (px - last_stats_size.get()).abs() < 0.5 {
+                return;
+            }
+            last_stats_size.set(px);
+            stats.set_font_size(px);
+        });
+    }
 
     // --- Status ---
     let status = gtk::Label::new(Some("Siap. Belum ada live yang disambungkan."));
@@ -580,17 +690,20 @@ pub fn build(
         let edit = edit.clone();
         let syncing = syncing.clone();
         let webcam = webcam.clone();
+        let stats = stats.clone();
         overlay.on_editing_changed(move |on| {
             syncing.set(true);
             edit.set_active(on);
             syncing.set(false);
             webcam.set_editing(on);
+            stats.set_editing(on);
         });
     }
     {
         let overlay = overlay.clone();
         let syncing = syncing.clone();
         let webcam = webcam.clone();
+        let stats = stats.clone();
         edit.connect_toggled(move |btn| {
             if syncing.get() {
                 return;
@@ -600,6 +713,7 @@ pub fn build(
             }
             overlay.set_editing(btn.is_active());
             webcam.set_editing(btn.is_active());
+            stats.set_editing(btn.is_active());
         });
     }
 

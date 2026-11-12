@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    model::{emote_key, ChatMsg, Ctl, Event, JobRequest, Kind},
+    model::{emote_key, ChatMsg, Ctl, Event, JobRequest, Kind, LiveStats},
 };
 use gtk::prelude::*;
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
@@ -41,11 +41,17 @@ pub fn run(
         }
         let overlay = Rc::new(build(app, &cfg_for_activate, rx.clone(), obs_hub.clone()));
         let webcam = crate::webcam::build(app, &cfg_for_activate);
+        let stats = crate::stats::build(app, &cfg_for_activate);
+        {
+            let stats = stats.clone();
+            overlay.on_stats(move |s| stats.set(s));
+        }
         let panel = crate::control::build(
             app,
             &cfg_for_activate,
             overlay.clone(),
             webcam,
+            stats,
             job_tx.clone(),
             obs_ctl.clone(),
         );
@@ -188,6 +194,11 @@ impl Overlay {
         *self.ui.editing_sink.borrow_mut() = Some(Rc::new(f));
     }
 
+    /// Angka statistik live dari thread YouTube, ditampilkan di kartu statistik.
+    pub fn on_stats<F: Fn(LiveStats) + 'static>(&self, f: F) {
+        *self.ui.stats_sink.borrow_mut() = Some(Rc::new(f));
+    }
+
     /// Simpan setelan tampilan sekali saja setelah perubahan terakhir (mis. sambil
     /// menggeser slider opacity).
     fn schedule_persist(&self) {
@@ -285,6 +296,7 @@ fn build(
         drag_from: Cell::new((cfg.x, cfg.y)),
         status_sink: RefCell::new(None),
         editing_sink: RefCell::new(None),
+        stats_sink: RefCell::new(None),
         obs,
     });
 
@@ -327,6 +339,7 @@ fn build(
                     ui_events.report_status(&s);
                     ui_events.push_chat(ChatMsg::system(s));
                 }
+                Event::Stats(s) => ui_events.report_stats(s),
                 Event::Ctl(c) => ui_events.handle_ctl(c),
             }
         }
@@ -556,6 +569,7 @@ struct Ui {
     drag_from: Cell<(i32, i32)>,
     status_sink: RefCell<Option<Rc<dyn Fn(&str)>>>,
     editing_sink: RefCell<Option<Rc<dyn Fn(bool)>>>,
+    stats_sink: RefCell<Option<Rc<dyn Fn(LiveStats)>>>,
     /// Halaman OBS memakai setelan tampilan yang sama.
     obs: crate::obs::Hub,
 }
@@ -564,6 +578,12 @@ impl Ui {
     fn report_status(&self, text: &str) {
         if let Some(f) = self.status_sink.borrow().as_ref() {
             f(text);
+        }
+    }
+
+    fn report_stats(&self, stats: LiveStats) {
+        if let Some(f) = self.stats_sink.borrow().as_ref() {
+            f(stats);
         }
     }
 

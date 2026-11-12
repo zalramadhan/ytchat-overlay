@@ -83,6 +83,18 @@ impl Webcam {
         self.schedule_persist();
     }
 
+    /// Rasio gambar: `"4:3"`, `"16:9"`, atau `"1:1"`. Gambar dipotong (cover)
+    /// mengikuti rasio ini, bukan diregangkan.
+    pub fn set_ratio(&self, ratio: &str) {
+        let ratio = ratio.trim().to_string();
+        if ratio.is_empty() || self.ui.cfg.borrow().cam_ratio == ratio {
+            return;
+        }
+        self.ui.cfg.borrow_mut().cam_ratio = ratio;
+        self.ui.apply_size();
+        self.schedule_persist();
+    }
+
     pub fn set_mirror(&self, on: bool) {
         {
             let mut cfg = self.ui.cfg.borrow_mut();
@@ -196,7 +208,6 @@ pub fn build(app: &gtk::Application, cfg: &Config) -> Webcam {
         window: RefCell::new(window.clone()),
         area: area.clone(),
         surface: RefCell::new(None),
-        frame_size: Cell::new((CAPTURE_W, CAPTURE_H)),
         editing: Cell::new(false),
         drag_from: Cell::new((cfg.cam_x, cfg.cam_y)),
         status_sink: RefCell::new(None),
@@ -300,8 +311,6 @@ struct CamUi {
     window: RefCell<gtk::Window>,
     area: gtk::DrawingArea,
     surface: RefCell<Option<gtk::cairo::ImageSurface>>,
-    /// Rasio gambar kamera terakhir, dipakai menghitung tinggi preview.
-    frame_size: Cell<(u32, u32)>,
     editing: Cell<bool>,
     drag_from: Cell<(i32, i32)>,
     status_sink: RefCell<Option<Rc<dyn Fn(&str)>>>,
@@ -318,12 +327,12 @@ impl CamUi {
         }
     }
 
-    /// Sesuaikan ukuran jendela dengan lebar setelan dan rasio kamera.
+    /// Sesuaikan ukuran jendela dengan lebar setelan dan rasio gambar pilihan.
     fn apply_size(&self) {
         let width = self.cfg.borrow().cam_width.clamp(120, 960);
-        let (fw, fh) = self.frame_size.get();
-        let height = ((f64::from(width)) * f64::from(fh) / f64::from(fw.max(1))).round();
-        let height = (height as i32).clamp(60, 2160);
+        let ratio = ratio_of(&self.cfg.borrow().cam_ratio);
+        let height = (f64::from(width) / ratio).round() as i32;
+        let height = height.clamp(60, 2160);
         self.area.set_content_width(width);
         self.area.set_content_height(height);
         self.window.borrow().set_default_size(width, height);
@@ -345,8 +354,6 @@ impl CamUi {
                 return;
             }
         }
-        self.frame_size.set((w, h));
-        self.apply_size();
         self.area.queue_draw();
     }
 
@@ -508,6 +515,15 @@ fn stream_frames(
     Ok(())
 }
 
+/// Rasio lebar:tinggi dari setelan; nilai tak dikenal dianggap `4:3`.
+pub(crate) fn ratio_of(value: &str) -> f64 {
+    match value.trim().replace(' ', "").as_str() {
+        "16:9" => 16.0 / 9.0,
+        "1:1" => 1.0,
+        _ => 4.0 / 3.0,
+    }
+}
+
 fn decode_frame(fourcc: [u8; 4], buf: &[u8], w: u32, h: u32) -> Result<Frame, String> {
     if &fourcc == b"MJPG" {
         let mut decoder = jpeg_decoder::Decoder::new(buf);
@@ -655,5 +671,14 @@ mod tests {
     #[test]
     fn yuyv_pendek_ditolak() {
         assert!(yuyv_to_bgra(&[0, 0, 0, 0], 4, 4).is_err());
+    }
+
+    #[test]
+    fn rasio_webcam_dikenali() {
+        assert!((ratio_of("16:9") - 1.777_8).abs() < 0.001);
+        assert!((ratio_of(" 1:1 ") - 1.0).abs() < f64::EPSILON);
+        assert!((ratio_of("4:3") - 1.333_3).abs() < 0.001);
+        // Nilai aneh tetap jatuh ke rasio kamera bawaan, bukan membagi nol.
+        assert!((ratio_of("9:16x") - 4.0 / 3.0).abs() < f64::EPSILON);
     }
 }
