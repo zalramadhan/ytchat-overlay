@@ -52,6 +52,10 @@ pub struct Config {
     pub cam_mirror: bool,
     /// Rasio gambar webcam: "4:3" (bawaan kamera), "16:9", atau "1:1".
     pub cam_ratio: String,
+    /// Kecerahan gambar webcam (-100 sampai 100, 0 = apa adanya).
+    pub cam_brightness: i32,
+    /// Kontras gambar webcam (-100 sampai 100, 0 = apa adanya).
+    pub cam_contrast: i32,
 
     // Statistik live di layar (penonton, subscriber, total tayangan)
     pub stats: bool,
@@ -89,6 +93,8 @@ impl Default for Config {
             cam_y: 720,
             cam_mirror: true,
             cam_ratio: "4:3".into(),
+            cam_brightness: 0,
+            cam_contrast: 0,
             stats: false,
             stats_x: 470,
             stats_y: 200,
@@ -189,6 +195,8 @@ impl Config {
         c.cam_y = cfg.cam_y;
         c.cam_mirror = cfg.cam_mirror;
         c.cam_ratio = cfg.cam_ratio.clone();
+        c.cam_brightness = cfg.cam_brightness;
+        c.cam_contrast = cfg.cam_contrast;
         c.save();
     }
 

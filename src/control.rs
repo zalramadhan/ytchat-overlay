@@ -327,6 +327,44 @@ pub fn build(
     cam_ratio_row.append(&cam_ratio);
     root.append(&cam_ratio_row);
 
+    let cam_bright_start = cfg.cam_brightness.clamp(-100, 100);
+    let cam_bright_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let cam_bright_label = gtk::Label::new(Some("Kecerahan"));
+    cam_bright_label.set_xalign(0.0);
+    cam_bright_label.set_width_chars(14);
+    let cam_bright = gtk::Scale::with_range(gtk::Orientation::Horizontal, -100.0, 100.0, 1.0);
+    cam_bright.set_value(f64::from(cam_bright_start));
+    cam_bright.set_draw_value(false);
+    cam_bright.set_hexpand(true);
+    cam_bright.set_tooltip_text(Some("Geser ke kanan kalau gambar kamera terlalu gelap."));
+    let cam_bright_value = gtk::Label::new(Some(&signed_label(cam_bright_start)));
+    cam_bright_value.set_width_chars(4);
+    cam_bright_value.set_xalign(1.0);
+    cam_bright_row.append(&cam_bright_label);
+    cam_bright_row.append(&cam_bright);
+    cam_bright_row.append(&cam_bright_value);
+    root.append(&cam_bright_row);
+
+    let cam_contrast_start = cfg.cam_contrast.clamp(-100, 100);
+    let cam_contrast_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let cam_contrast_label = gtk::Label::new(Some("Kontras"));
+    cam_contrast_label.set_xalign(0.0);
+    cam_contrast_label.set_width_chars(14);
+    let cam_contrast = gtk::Scale::with_range(gtk::Orientation::Horizontal, -100.0, 100.0, 1.0);
+    cam_contrast.set_value(f64::from(cam_contrast_start));
+    cam_contrast.set_draw_value(false);
+    cam_contrast.set_hexpand(true);
+    cam_contrast.set_tooltip_text(Some(
+        "Geser ke kanan kalau gambar pucat; ke kiri kalau terlalu tajam.",
+    ));
+    let cam_contrast_value = gtk::Label::new(Some(&signed_label(cam_contrast_start)));
+    cam_contrast_value.set_width_chars(4);
+    cam_contrast_value.set_xalign(1.0);
+    cam_contrast_row.append(&cam_contrast_label);
+    cam_contrast_row.append(&cam_contrast);
+    cam_contrast_row.append(&cam_contrast_value);
+    root.append(&cam_contrast_row);
+
     let cam_mirror_toggle = gtk::CheckButton::with_label("Cermin (mirror)");
     cam_mirror_toggle.set_active(cfg.cam_mirror);
     cam_mirror_toggle.set_tooltip_text(Some(
@@ -608,6 +646,34 @@ pub fn build(
             }
             last_cam_size.set(px);
             webcam.set_width(px);
+        });
+    }
+    {
+        let webcam = webcam.clone();
+        let cam_bright_value = cam_bright_value.clone();
+        let last_bright = Rc::new(Cell::new(cam_bright_start));
+        cam_bright.connect_value_changed(move |scale| {
+            let value = scale.value().round() as i32;
+            cam_bright_value.set_text(&signed_label(value));
+            if value == last_bright.get() {
+                return;
+            }
+            last_bright.set(value);
+            webcam.set_brightness(value);
+        });
+    }
+    {
+        let webcam = webcam.clone();
+        let cam_contrast_value = cam_contrast_value.clone();
+        let last_contrast = Rc::new(Cell::new(cam_contrast_start));
+        cam_contrast.connect_value_changed(move |scale| {
+            let value = scale.value().round() as i32;
+            cam_contrast_value.set_text(&signed_label(value));
+            if value == last_contrast.get() {
+                return;
+            }
+            last_contrast.set(value);
+            webcam.set_contrast(value);
         });
     }
     {
@@ -960,6 +1026,15 @@ fn video_devices() -> Vec<String> {
     }
     out.sort();
     out
+}
+
+/// Nilai setelan bertanda, mis. `+20`, `0`, `-35`.
+fn signed_label(value: i32) -> String {
+    if value > 0 {
+        format!("+{value}")
+    } else {
+        value.to_string()
+    }
 }
 
 fn monitor_connectors() -> Vec<String> {

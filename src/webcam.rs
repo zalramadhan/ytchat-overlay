@@ -5,7 +5,7 @@ use std::{
     cell::{Cell, RefCell},
     rc::Rc,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicI32, Ordering},
         Arc,
     },
     time::Duration,
@@ -92,6 +92,34 @@ impl Webcam {
         }
         self.ui.cfg.borrow_mut().cam_ratio = ratio;
         self.ui.apply_size();
+        self.schedule_persist();
+    }
+
+    /// Kecerahan gambar (-100..100); diterapkan ke frame berikutnya.
+    pub fn set_brightness(&self, value: i32) {
+        let value = value.clamp(-100, 100);
+        {
+            let mut cfg = self.ui.cfg.borrow_mut();
+            if cfg.cam_brightness == value {
+                return;
+            }
+            cfg.cam_brightness = value;
+        }
+        self.ui.adjust.brightness.store(value, Ordering::Relaxed);
+        self.schedule_persist();
+    }
+
+    /// Kontras gambar (-100..100); `-100` = abu-abu rata, `100` = dua kali kontras.
+    pub fn set_contrast(&self, value: i32) {
+        let value = value.clamp(-100, 100);
+        {
+            let mut cfg = self.ui.cfg.borrow_mut();
+            if cfg.cam_contrast == value {
+                return;
+            }
+            cfg.cam_contrast = value;
+        }
+        self.ui.adjust.contrast.store(value, Ordering::Relaxed);
         self.schedule_persist();
     }
 
@@ -212,6 +240,7 @@ pub fn build(app: &gtk::Application, cfg: &Config) -> Webcam {
         drag_from: Cell::new((cfg.cam_x, cfg.cam_y)),
         status_sink: RefCell::new(None),
         capture: RefCell::new(None),
+        adjust: Arc::new(Adjust::new(cfg.cam_brightness, cfg.cam_contrast)),
         frames_tx,
         status_tx,
         persist_gen: Cell::new(0),
@@ -315,6 +344,8 @@ struct CamUi {
     drag_from: Cell<(i32, i32)>,
     status_sink: RefCell<Option<Rc<dyn Fn(&str)>>>,
     capture: RefCell<Option<Capture>>,
+    /// Kecerahan/kontras dibagi dengan thread kamera.
+    adjust: Arc<Adjust>,
     frames_tx: async_channel::Sender<Frame>,
     status_tx: async_channel::Sender<String>,
     persist_gen: Cell<u64>,
@@ -398,7 +429,8 @@ impl CamUi {
         let thread_stop = stop.clone();
         let frames = self.frames_tx.clone();
         let status = self.status_tx.clone();
-        std::thread::spawn(move || capture_loop(device, frames, status, thread_stop));
+        let adjust = self.adjust.clone();
+        std::thread::spawn(move || capture_loop(device, frames, status, adjust, thread_stop));
         *self.capture.borrow_mut() = Some(Capture { stop });
     }
 
@@ -413,6 +445,21 @@ impl CamUi {
     fn restart_capture(&self) {
         if self.cfg.borrow().cam {
             self.start_capture();
+        }
+    }
+}
+
+/// Setelan gambar yang bisa diubah dari panel tanpa membuka ulang kamera.
+struct Adjust {
+    brightness: AtomicI32,
+    contrast: AtomicI32,
+}
+
+impl Adjust {
+    fn new(brightness: i32, contrast: i32) -> Self {
+        Adjust {
+            brightness: AtomicI32::new(brightness.clamp(-100, 100)),
+            contrast: AtomicI32::new(contrast.clamp(-100, 100)),
         }
     }
 }
@@ -432,11 +479,12 @@ fn capture_loop(
     device: String,
     frames: async_channel::Sender<Frame>,
     status: async_channel::Sender<String>,
+    adjust: Arc<Adjust>,
     stop: Arc<AtomicBool>,
 ) {
     let mut last_error = String::new();
     while !stop.load(Ordering::Relaxed) {
-        match stream_frames(&device, &frames, &status, &stop) {
+        match stream_frames(&device, &frames, &status, &adjust, &stop) {
             Ok(()) => {}
             Err(e) => {
                 if e != last_error {
@@ -461,6 +509,7 @@ fn stream_frames(
     device: &str,
     frames: &async_channel::Sender<Frame>,
     status: &async_channel::Sender<String>,
+    adjust: &Adjust,
     stop: &AtomicBool,
 ) -> Result<(), String> {
     use v4l::io::traits::CaptureStream;
@@ -506,7 +555,12 @@ fn stream_frames(
         let (buf, _meta) = stream
             .next()
             .map_err(|e| format!("Webcam: frame gagal diambil ({e})."))?;
-        let frame = decode_frame(fourcc, buf, fmt.width, fmt.height)?;
+        let mut frame = decode_frame(fourcc, buf, fmt.width, fmt.height)?;
+        apply_adjust(
+            &mut frame.bgra,
+            adjust.brightness.load(Ordering::Relaxed),
+            adjust.contrast.load(Ordering::Relaxed),
+        );
         // Kalau UI tertinggal, lewati frame ini supaya antreannya tidak menumpuk.
         if frames.len() < 2 {
             let _ = frames.try_send(frame);
@@ -596,6 +650,22 @@ fn clamp_u8(v: f32) -> u8 {
     v.clamp(0.0, 255.0).round() as u8
 }
 
+/// Terapkan kecerahan & kontras ke buffer BGRA. `brightness` menggeser semua
+/// kanal warna, `contrast` menjauhkan/mendekatkan nilai dari titik tengah 128.
+fn apply_adjust(bgra: &mut [u8], brightness: i32, contrast: i32) {
+    if brightness == 0 && contrast == 0 {
+        return;
+    }
+    let offset = brightness.clamp(-100, 100) as f32 * 1.27;
+    let factor = 1.0 + contrast.clamp(-100, 100) as f32 / 100.0;
+    for px in bgra.chunks_exact_mut(4) {
+        for channel in px.iter_mut().take(3) {
+            let v = f32::from(*channel);
+            *channel = clamp_u8((v - 128.0) * factor + 128.0 + offset);
+        }
+    }
+}
+
 fn draw(ui: &CamUi, cr: &gtk::cairo::Context, w: i32, h: i32) {
     let (wf, hf) = (f64::from(w), f64::from(h));
     if wf < 2.0 || hf < 2.0 {
@@ -671,6 +741,30 @@ mod tests {
     #[test]
     fn yuyv_pendek_ditolak() {
         assert!(yuyv_to_bgra(&[0, 0, 0, 0], 4, 4).is_err());
+    }
+
+    #[test]
+    fn kecerahan_dan_kontras_diterapkan() {
+        let asli = [100u8, 100, 100, 255, 200, 200, 200, 128];
+
+        let mut px = asli;
+        apply_adjust(&mut px, 0, 0);
+        assert_eq!(px, asli, "tanpa setelan gambarnya tidak berubah");
+
+        let mut px = asli;
+        apply_adjust(&mut px, 50, 0);
+        assert_eq!(&px[..4], &[164, 164, 164, 255]);
+        assert_eq!(&px[4..7], &[255, 255, 255], "nilai di atas 255 dibatasi");
+
+        let mut px = asli;
+        apply_adjust(&mut px, 0, 100);
+        assert_eq!(&px[..3], &[72, 72, 72], "kontras menjauh dari 128");
+        assert_eq!(&px[4..7], &[255, 255, 255]);
+        assert_eq!(px[7], 128, "alpha tidak ikut diubah");
+
+        let mut px = asli;
+        apply_adjust(&mut px, -100, -100);
+        assert_eq!(&px[..3], &[1, 1, 1], "kontras minimum meratakan warna");
     }
 
     #[test]

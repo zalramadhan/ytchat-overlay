@@ -131,7 +131,10 @@ sama dengan overlay chat.
    `1:1`. Gambar dipotong mengikuti rasio (bukan diregangkan), jadi tidak ada
    wajah yang lonjong.
 4. Centang **Cermin** kalau ingin gambarnya dibalik seperti cermin.
-5. Untuk memindahkan: aktifkan **Mode edit posisi**, geser jendela webcam (dan
+5. Kalau gambar terlalu gelap atau pucat, geser **Kecerahan** dan **Kontras**
+   (−100 sampai +100, 0 = apa adanya). Keduanya diterapkan ke gambar yang tampil
+   di overlay, bukan mengubah setelan kamera di sistem.
+6. Untuk memindahkan: aktifkan **Mode edit posisi**, geser jendela webcam (dan
    chat) dengan mouse, lalu matikan lagi untuk menyimpan posisinya.
 
 Status di bawah tombol menunjukkan hasilnya, mis. `Kamera aktif: video0 640×480
@@ -203,6 +206,8 @@ nilainya akan tertulis sendiri sebagai `avatar_px` begitu kamu menggeser slider.
 | `cam_x`, `cam_y` | `30`, `720` | Posisi jendela webcam (piksel dari pojok kiri atas monitor). |
 | `cam_mirror` | `true` | Balik gambar seperti cermin. |
 | `cam_ratio` | `"4:3"` | Rasio gambar webcam: `"4:3"`, `"16:9"`, atau `"1:1"`. |
+| `cam_brightness` | `0` | Kecerahan gambar webcam (−100 sampai 100). |
+| `cam_contrast` | `0` | Kontras gambar webcam (−100 sampai 100). |
 | `stats` | `false` | Tampilkan kartu statistik live. |
 | `stats_x`, `stats_y` | `470`, `200` | Posisi kartu statistik (piksel dari pojok kiri atas monitor). |
 | `stats_font_size` | `16.0` | Ukuran teks kartu statistik (10–40 px). |
