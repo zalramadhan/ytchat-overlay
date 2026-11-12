@@ -14,11 +14,11 @@ use std::process::ExitCode;
 
 fn print_help() {
     println!(
-        "ytchat-overlay — overlay chat YouTube live (transparan, klik-tembus)\n\
+        "ytstream-ingame-overlay — overlay chat YouTube live (transparan, klik-tembus)\n\
          \n\
          Tanpa argumen: buka panel aplikasi (tempel link, atur posisi, mulai overlay).\n\
-         \x20 ytchat-overlay [link-atau-id-video]   langsung mulai overlay untuk live itu\n\
-         \x20 ytchat-overlay ctl <perintah>          kendalikan overlay dari terminal\n\
+         \x20 ytstream-ingame-overlay [link-atau-id-video]   langsung mulai overlay untuk live itu\n\
+         \x20 ytstream-ingame-overlay ctl <perintah>          kendalikan overlay dari terminal\n\
          \n\
          PERINTAH ctl:\n\
          \x20 toggle   sembunyikan / tampilkan overlay\n\
@@ -43,7 +43,7 @@ fn main() -> ExitCode {
         }
         Some("ctl") => {
             let Some(cmd) = args.get(1) else {
-                eprintln!("Pakai: ytchat-overlay ctl <toggle|edit|lock|clear|quit>");
+                eprintln!("Pakai: ytstream-ingame-overlay ctl <toggle|edit|lock|clear|quit>");
                 return ExitCode::FAILURE;
             };
             if Ctl::parse(cmd).is_none() {

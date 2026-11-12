@@ -632,7 +632,7 @@ pub async fn run(cfg: Config, tx: Sender<Event>) {
     let Some(vid) = video_id(&cfg.video) else {
         say(
             &tx,
-            "Link/ID video live belum diisi. Jalankan: ytchat-overlay <link-live> atau isi `video` di config.",
+            "Link/ID video live belum diisi. Jalankan: ytstream-ingame-overlay <link-live> atau isi `video` di config.",
         )
         .await;
         return;

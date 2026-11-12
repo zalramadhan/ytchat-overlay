@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-const APP_ID: &str = "id.ytchat.Overlay";
+const APP_ID: &str = "id.ytstream.IngameOverlay";
 const FADE_STEP_MS: u64 = 50;
 
 pub fn run(
@@ -221,7 +221,7 @@ fn create_window(
 ) -> gtk::Window {
     let window = gtk::Window::builder()
         .application(app)
-        .title("ytchat-overlay")
+        .title("ytstream-ingame-overlay")
         .decorated(false)
         .resizable(false)
         .default_width(cfg.width.max(80))
@@ -231,7 +231,7 @@ fn create_window(
     // Kelas khusus supaya CSS transparan tidak ikut kena jendela panel.
     window.add_css_class("chat-window");
     window.init_layer_shell();
-    window.set_namespace(Some("ytchat-overlay"));
+    window.set_namespace(Some("ytstream-ingame-overlay"));
     window.set_layer(layer_of(cfg));
     window.set_anchor(Edge::Top, true);
     window.set_anchor(Edge::Left, true);

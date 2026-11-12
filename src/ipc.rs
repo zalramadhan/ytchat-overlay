@@ -6,10 +6,10 @@ use tokio::net::UnixListener;
 
 pub fn sock_path() -> PathBuf {
     let base = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
-    PathBuf::from(base).join("ytchat-overlay.sock")
+    PathBuf::from(base).join("ytstream-ingame-overlay.sock")
 }
 
-/// Server kontrol: terima perintah "toggle|edit|lock|clear|quit" dari `ytchat-overlay ctl <cmd>`.
+/// Server kontrol: terima perintah "toggle|edit|lock|clear|quit" dari `ytstream-ingame-overlay ctl <cmd>`.
 pub async fn serve(tx: Sender<Event>) {
     let path = sock_path();
     // Jangan hapus socket milik instance lain yang masih melayani: cukup mundur.

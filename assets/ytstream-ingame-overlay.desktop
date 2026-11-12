@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=YTStream In-Game Overlay
+GenericName=Overlay chat live YouTube
+Comment=Chat YouTube live, webcam, dan statistik sebagai overlay di atas game — transparan dan klik-tembus
+Exec=ytstream-ingame-overlay
+Icon=ytstream-ingame-overlay
+Terminal=false
+Categories=AudioVideo;
+Keywords=youtube;chat;overlay;stream;live;
+StartupNotify=true
+StartupWMClass=id.ytstream.IngameOverlay

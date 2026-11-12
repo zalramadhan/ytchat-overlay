@@ -218,14 +218,14 @@ fn create_window(
 ) -> gtk::Window {
     let window = gtk::Window::builder()
         .application(app)
-        .title("ytchat-stats")
+        .title("ytstream-stats")
         .decorated(false)
         .resizable(false)
         .build();
 
     window.add_css_class("stats-window");
     window.init_layer_shell();
-    window.set_namespace(Some("ytchat-stats"));
+    window.set_namespace(Some("ytstream-stats"));
     window.set_layer(crate::overlay::layer_of(cfg));
     window.set_anchor(Edge::Top, true);
     window.set_anchor(Edge::Left, true);

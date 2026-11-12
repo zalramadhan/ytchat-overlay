@@ -1,8 +1,8 @@
-# ytchat-overlay
+# ytstream-ingame-overlay
 
-Overlay chat YouTube Live untuk **KDE Plasma 6 (Wayland)**: jendela transparan
-yang selalu di atas game, **klik-tembus** (klik tetap tembus ke game), dan
-posisinya bisa digeser dengan mouse saat mode edit.
+Overlay chat, webcam, dan statistik YouTube Live untuk **KDE Plasma 6 (Wayland)**:
+jendela transparan yang selalu di atas game, **klik-tembus** (klik tetap tembus
+ke game), dan posisinya bisa digeser dengan mouse saat mode edit.
 
 Isi overlay: nama pengirim + badge (owner/mod/member), avatar, emoji (termasuk
 emoji custom kanal), highlight Super Chat/Super Sticker + nominal, dan pesan
@@ -13,7 +13,7 @@ lama memudar otomatis. Ada juga **overlay webcam** dan kartu **statistik live**
 
 Panel pengaturannya:
 
-<img src="docs/panel.png" alt="Panel pengaturan ytchat-overlay" width="440">
+<img src="docs/panel.png" alt="Panel pengaturan ytstream-ingame-overlay" width="440">
 
 Gambar di atas memakai contoh pesan, bukan live sungguhan.
 
@@ -35,7 +35,7 @@ Gambar di atas memakai contoh pesan, bukan live sungguhan.
 
 Skrip itu: memasang `gtk4-layer-shell` dan `v4l-utils` bila belum ada (minta
 password sudo), build release, memasang binary ke `~/.local/bin`, menambah entri menu
-"Chat YouTube Live" + ikon, lalu langsung menjalankan aplikasinya.
+"YTStream In-Game Overlay" + ikon, lalu langsung menjalankan aplikasinya.
 
 Opsi lain:
 
@@ -47,11 +47,11 @@ Opsi lain:
 
 Setelah terpasang, aplikasi bisa dibuka dari menu aplikasi KDE kapan saja.
 `--uninstall` menghentikan aplikasi yang sedang berjalan dan membiarkan file
-config (`~/.config/ytchat-overlay/`) tetap ada.
+config (`~/.config/ytstream-ingame-overlay/`) tetap ada.
 
 ## Pemakaian panel
 
-1. Buka **Chat YouTube Live** dari menu.
+1. Buka **YTStream In-Game Overlay** dari menu.
 2. Tempel **link live** (bentuk `https://www.youtube.com/watch?v=…`,
    `https://youtu.be/…`, atau `https://www.youtube.com/live/…`) — atau cukup ID videonya.
 3. Isi **API key** (tersimpan di config; cukup sekali).
@@ -166,8 +166,12 @@ browser source terpisah.
 
 ## File config
 
-`~/.config/ytchat-overlay/config.toml` (dibuat otomatis saat pertama jalan).
+`~/.config/ytstream-ingame-overlay/config.toml` (dibuat otomatis saat pertama jalan).
 Bisa diedit manual; perubahan dari file berlaku setelah aplikasi dijalankan ulang.
+
+Kalau sebelumnya memakai versi bernama `ytchat-overlay`, config lama di
+`~/.config/ytchat-overlay/config.toml` disalin otomatis ke folder baru saat
+pertama dijalankan — link live dan API key tidak hilang.
 
 | Kunci | Default | Arti |
 |---|---|---|
@@ -206,12 +210,12 @@ nilainya akan tertulis sendiri sebagai `avatar_px` begitu kamu menggeser slider.
 ## Pemakaian lewat terminal (opsional)
 
 ```bash
-ytchat-overlay "https://youtu.be/VIDEO_ID"   # langsung jalankan overlay + panel
-ytchat-overlay ctl toggle                    # sembunyikan/tampilkan overlay
-ytchat-overlay ctl edit                      # masuk/keluar mode edit posisi
-ytchat-overlay ctl lock                      # keluar mode edit & simpan posisi
-ytchat-overlay ctl clear                     # hapus semua pesan
-ytchat-overlay ctl quit                      # keluar dari aplikasi
+ytstream-ingame-overlay "https://youtu.be/VIDEO_ID"   # langsung jalankan overlay + panel
+ytstream-ingame-overlay ctl toggle                    # sembunyikan/tampilkan overlay
+ytstream-ingame-overlay ctl edit                      # masuk/keluar mode edit posisi
+ytstream-ingame-overlay ctl lock                      # keluar mode edit & simpan posisi
+ytstream-ingame-overlay ctl clear                     # hapus semua pesan
+ytstream-ingame-overlay ctl quit                      # keluar dari aplikasi
 ```
 
 ## Catatan

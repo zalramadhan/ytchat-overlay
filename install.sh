@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pasang ytchat-overlay sebagai aplikasi desktop:
+# Pasang ytstream-ingame-overlay sebagai aplikasi desktop:
 #   - cek/pasang dependensi sistem (gtk4-layer-shell, v4l-utils)
 #   - build release
 #   - pasang binary, entri menu KDE, dan ikon
@@ -43,19 +43,23 @@ ICON_DIR="$DATA_DIR/icons/hicolor/scalable/apps"
 
 # --- 0. Uninstall -------------------------------------------------------------
 if [ "$UNINSTALL" -eq 1 ]; then
-    say "Menghapus ytchat-overlay…"
+    say "Menghapus ytstream-ingame-overlay…"
 
     # Hentikan aplikasi yang sedang berjalan supaya tidak ada proses yang
     # memakai file yang dihapus.
-    if [ -x "$BIN_DIR/ytchat-overlay" ] && [ -S "${XDG_RUNTIME_DIR:-/tmp}/ytchat-overlay.sock" ]; then
+    if [ -x "$BIN_DIR/ytstream-ingame-overlay" ] && [ -S "${XDG_RUNTIME_DIR:-/tmp}/ytstream-ingame-overlay.sock" ]; then
         # Exit code `ctl quit` bisa error karena koneksi terputus saat app keluar;
         # keberhasilannya dicek lewat pgrep di bawah.
-        "$BIN_DIR/ytchat-overlay" ctl quit >/dev/null 2>&1 || true
+        "$BIN_DIR/ytstream-ingame-overlay" ctl quit >/dev/null 2>&1 || true
         sleep 1
     fi
 
     removed=0
+    # Nama lama (sebelum rename) ikut dibersihkan kalau masih ada.
     for f in \
+        "$BIN_DIR/ytstream-ingame-overlay" \
+        "$DESKTOP_DIR/ytstream-ingame-overlay.desktop" \
+        "$ICON_DIR/ytstream-ingame-overlay.svg" \
         "$BIN_DIR/ytchat-overlay" \
         "$DESKTOP_DIR/ytchat-overlay.desktop" \
         "$ICON_DIR/ytchat-overlay.svg"; do
@@ -74,11 +78,13 @@ if [ "$UNINSTALL" -eq 1 ]; then
     fi
 
     [ "$removed" -eq 1 ] || warn "Tidak ada file instalasi yang ditemukan."
-    if pgrep -x ytchat-overlay >/dev/null 2>&1; then
-        warn "Masih ada proses ytchat-overlay; tutup panelnya atau jalankan: pkill -x ytchat-overlay"
+    # Nama biner lebih dari 15 karakter, jadi `pgrep -x` tidak bisa dipakai;
+    # pola `[/]` menghindari ikut mencocokkan baris perintah skrip ini sendiri.
+    if pgrep -f "[/]ytstream-ingame-overlay" >/dev/null 2>&1; then
+        warn "Masih ada proses ytstream-ingame-overlay; tutup panelnya atau jalankan: pkill -f ytstream-ingame-overlay"
     fi
     say "Selesai."
-    echo "Config dan setelanmu dibiarkan di: ${XDG_CONFIG_HOME:-$HOME/.config}/ytchat-overlay/"
+    echo "Config dan setelanmu dibiarkan di: ${XDG_CONFIG_HOME:-$HOME/.config}/ytstream-ingame-overlay/"
     echo "Hapus folder itu kalau ingin membuang link, API key, dan setelan juga."
     exit 0
 fi
@@ -115,14 +121,30 @@ say "Membangun versi release (sekali saja, beberapa menit)…"
 cargo build --release
 
 # --- 3. Pasang file ----------------------------------------------------------
+# Pemasangan dengan nama lama dihentikan dan dibuang, supaya di menu tidak ada
+# dua entri untuk aplikasi yang sama.
+if pgrep -x ytchat-overlay >/dev/null 2>&1; then
+    pkill -x ytchat-overlay 2>/dev/null || true
+    echo "  aplikasi versi lama (ytchat-overlay) dihentikan"
+fi
+for f in \
+    "$BIN_DIR/ytchat-overlay" \
+    "$DESKTOP_DIR/ytchat-overlay.desktop" \
+    "$ICON_DIR/ytchat-overlay.svg"; do
+    if [ -e "$f" ]; then
+        rm -f "$f"
+        echo "  dihapus (nama lama): $f"
+    fi
+done
+
 install -d "$BIN_DIR" "$DESKTOP_DIR" "$ICON_DIR"
-install -m755 target/release/ytchat-overlay "$BIN_DIR/ytchat-overlay"
-install -m644 assets/ytchat-overlay.svg "$ICON_DIR/ytchat-overlay.svg"
+install -m755 target/release/ytstream-ingame-overlay "$BIN_DIR/ytstream-ingame-overlay"
+install -m644 assets/ytstream-ingame-overlay.svg "$ICON_DIR/ytstream-ingame-overlay.svg"
 
 # Exec memakai path absolut supaya tidak bergantung pada PATH sesi KDE.
-sed "s|^Exec=.*|Exec=$BIN_DIR/ytchat-overlay|" \
-    assets/ytchat-overlay.desktop >"$DESKTOP_DIR/ytchat-overlay.desktop"
-chmod 644 "$DESKTOP_DIR/ytchat-overlay.desktop"
+sed "s|^Exec=.*|Exec=$BIN_DIR/ytstream-ingame-overlay|" \
+    assets/ytstream-ingame-overlay.desktop >"$DESKTOP_DIR/ytstream-ingame-overlay.desktop"
+chmod 644 "$DESKTOP_DIR/ytstream-ingame-overlay.desktop"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
@@ -132,8 +154,8 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
 fi
 
 say "Selesai — aplikasi sudah terpasang."
-echo "Program : $BIN_DIR/ytchat-overlay"
-echo "Menu    : cari \"Chat YouTube Live\" di menu aplikasi KDE"
+echo "Program : $BIN_DIR/ytstream-ingame-overlay"
+echo "Menu    : cari \"YTStream In-Game Overlay\" di menu aplikasi KDE"
 if command -v kbuildsycoca6 >/dev/null 2>&1; then
     echo "Kalau ikonnya belum muncul di menu: kbuildsycoca6"
 fi
@@ -146,7 +168,7 @@ if [ "$LAUNCH" -eq 1 ]; then
     fi
     say "Menjalankan aplikasi…"
     # Dilepas dari terminal supaya tetap hidup walau terminal ditutup.
-    setsid "$BIN_DIR/ytchat-overlay" >/dev/null 2>&1 </dev/null &
+    setsid "$BIN_DIR/ytstream-ingame-overlay" >/dev/null 2>&1 </dev/null &
     disown 2>/dev/null || true
-    echo "Panel 'Chat YouTube Live' akan terbuka. Kalau sudah berjalan, panelnya dimunculkan lagi."
+    echo "Panel YTStream In-Game Overlay akan terbuka. Kalau sudah berjalan, panelnya dimunculkan lagi."
 fi

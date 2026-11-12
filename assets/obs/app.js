@@ -1,5 +1,5 @@
 // Halaman chat untuk Browser Source OBS Studio.
-// Menerima pesan lewat SSE dari aplikasi ytchat-overlay (localhost).
+// Menerima pesan lewat SSE dari aplikasi ytstream-ingame-overlay (localhost).
 (function () {
     'use strict';
 

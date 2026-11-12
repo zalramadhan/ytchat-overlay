@@ -101,8 +101,35 @@ impl Config {
     pub fn path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("ytchat-overlay")
+            .join("ytstream-ingame-overlay")
             .join("config.toml")
+    }
+
+    /// Salin config dari nama aplikasi lama kalau config baru belum ada, supaya
+    /// link live dan API key tidak hilang setelah aplikasi berganti nama.
+    fn migrate_legacy() {
+        let path = Self::path();
+        if path.exists() {
+            return;
+        }
+        let Some(base) = dirs::config_dir() else {
+            return;
+        };
+        // Nama folder sebelum rename; sengaja tetap ditulis di sini.
+        let legacy = base.join("ytchat-overlay").join("config.toml");
+        if !legacy.is_file() {
+            return;
+        }
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if std::fs::copy(&legacy, &path).is_ok() {
+            eprintln!(
+                "Config dari nama lama disalin: {} → {}",
+                legacy.display(),
+                path.display()
+            );
+        }
     }
 
     fn read_file() -> Option<Config> {
@@ -117,6 +144,7 @@ impl Config {
     }
 
     pub fn load() -> Self {
+        Self::migrate_legacy();
         match Self::read_file() {
             Some(c) => c,
             None => {

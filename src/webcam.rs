@@ -284,14 +284,14 @@ fn create_window(
 ) -> gtk::Window {
     let window = gtk::Window::builder()
         .application(app)
-        .title("ytchat-webcam")
+        .title("ytstream-webcam")
         .decorated(false)
         .resizable(false)
         .build();
 
     window.add_css_class("cam-window");
     window.init_layer_shell();
-    window.set_namespace(Some("ytchat-webcam"));
+    window.set_namespace(Some("ytstream-webcam"));
     window.set_layer(crate::overlay::layer_of(cfg));
     window.set_anchor(Edge::Top, true);
     window.set_anchor(Edge::Left, true);

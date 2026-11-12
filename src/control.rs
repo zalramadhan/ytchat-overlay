@@ -30,7 +30,7 @@ pub fn build(
 ) -> Rc<Control> {
     let window = gtk::Window::builder()
         .application(app)
-        .title("Chat YouTube Live")
+        .title("YTStream In-Game Overlay")
         .build();
     window.set_default_size(470, 820);
 
@@ -71,7 +71,7 @@ pub fn build(
     window.set_child(Some(&scroll));
 
     let title = gtk::Label::new(None);
-    title.set_markup("<b><big>Overlay Chat YouTube Live</big></b>");
+    title.set_markup("<b><big>YTStream In-Game Overlay</big></b>");
     title.set_xalign(0.0);
     root.append(&title);
 
