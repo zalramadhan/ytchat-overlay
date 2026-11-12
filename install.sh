@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pasang ytchat-overlay sebagai aplikasi desktop:
-#   - cek/pasang dependensi sistem (gtk4-layer-shell)
+#   - cek/pasang dependensi sistem (gtk4-layer-shell, v4l-utils)
 #   - build release
 #   - pasang binary, entri menu KDE, dan ikon
 #   - jalankan aplikasinya setelah selesai
@@ -84,20 +84,25 @@ if [ "$UNINSTALL" -eq 1 ]; then
 fi
 
 # --- 1. Dependensi sistem -----------------------------------------------------
-if pkg-config --exists gtk4-layer-shell 2>/dev/null; then
-    echo "✔ gtk4-layer-shell sudah terpasang."
+# gtk4-layer-shell untuk jendela overlay, libv4l2 (paket v4l-utils) untuk webcam.
+MISSING=()
+pkg-config --exists gtk4-layer-shell 2>/dev/null || MISSING+=(gtk4-layer-shell)
+pkg-config --exists libv4l2 2>/dev/null || MISSING+=(v4l-utils)
+
+if [ "${#MISSING[@]}" -eq 0 ]; then
+    echo "✔ Dependensi sistem sudah terpasang (gtk4-layer-shell, libv4l2)."
 elif [ "$SKIP_DEPS" -eq 1 ]; then
-    warn "gtk4-layer-shell belum terpasang (dilewati karena --no-deps)."
+    warn "Dependensi belum lengkap (${MISSING[*]}), dilewati karena --no-deps."
 elif command -v pacman >/dev/null 2>&1; then
     if [ ! -t 0 ]; then
         warn "Jalankan skrip ini dari terminal supaya bisa memasang dependensi (sudo)."
-        warn "Atau pasang dulu: sudo pacman -S gtk4-layer-shell"
+        warn "Atau pasang dulu: sudo pacman -S ${MISSING[*]}"
         exit 1
     fi
-    say "Memasang dependensi sistem: gtk4-layer-shell (butuh password sudo)"
-    sudo pacman -S --needed gtk4-layer-shell
+    say "Memasang dependensi sistem: ${MISSING[*]} (butuh password sudo)"
+    sudo pacman -S --needed "${MISSING[@]}"
 else
-    warn "gtk4-layer-shell belum terpasang. Pasang lewat package manager distro-mu dulu."
+    warn "Dependensi belum terpasang: ${MISSING[*]}. Pasang lewat package manager distro-mu dulu."
 fi
 
 # --- 2. Build ----------------------------------------------------------------

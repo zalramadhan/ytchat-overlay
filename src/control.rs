@@ -1,5 +1,6 @@
 use crate::{
-    config::Config, model::JobRequest, obs::ObsCtl, overlay::Overlay, youtube::video_id,
+    config::Config, model::JobRequest, obs::ObsCtl, overlay::Overlay, webcam::Webcam,
+    youtube::video_id,
 };
 use gtk::prelude::*;
 use std::{cell::Cell, rc::Rc, time::Duration};
@@ -22,6 +23,7 @@ pub fn build(
     app: &gtk::Application,
     cfg: &Config,
     overlay: Rc<Overlay>,
+    webcam: Webcam,
     job_tx: async_channel::Sender<JobRequest>,
     obs: ObsCtl,
 ) -> Rc<Control> {
@@ -233,6 +235,94 @@ pub fn build(
     fill_preview(&preview, avatar_start);
     root.append(&preview);
 
+    // --- Webcam di layar ---
+    root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+
+    let cam_title = gtk::Label::new(None);
+    cam_title.set_markup("<b>Webcam di layar</b>");
+    cam_title.set_xalign(0.0);
+    root.append(&cam_title);
+
+    let cam_desc = gtk::Label::new(Some(
+        "Tampilkan kamera langsung di atas game, terpisah dari OBS. Posisinya \
+         digeser lewat Mode edit posisi.",
+    ));
+    cam_desc.set_wrap(true);
+    cam_desc.set_xalign(0.0);
+    cam_desc.add_css_class("dim-label");
+    root.append(&cam_desc);
+
+    let cam_toggle = gtk::ToggleButton::with_label(if cfg.cam {
+        "Webcam: aktif"
+    } else {
+        "Webcam: mati"
+    });
+    cam_toggle.set_active(cfg.cam);
+    root.append(&cam_toggle);
+
+    let cam_device_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let cam_device_label = gtk::Label::new(Some("Perangkat"));
+    cam_device_label.set_xalign(0.0);
+    cam_device_label.set_width_chars(14);
+    let cam_current = cfg.cam_device.trim().to_string();
+    let mut cam_paths = video_devices();
+    if !cam_current.is_empty() && !cam_paths.iter().any(|p| p == &cam_current) {
+        cam_paths.insert(0, cam_current.clone());
+    }
+    if cam_paths.is_empty() {
+        cam_paths.push(cam_current.clone());
+    }
+    let cam_refs: Vec<&str> = cam_paths.iter().map(String::as_str).collect();
+    let cam_device = gtk::DropDown::from_strings(&cam_refs);
+    cam_device.set_hexpand(true);
+    cam_device.set_halign(gtk::Align::End);
+    let cam_selected = cam_paths
+        .iter()
+        .position(|p| p == &cam_current)
+        .unwrap_or(0) as u32;
+    cam_device.set_selected(cam_selected);
+    cam_device.set_tooltip_text(Some(
+        "Kamera yang ditampilkan. Perangkat biasanya /dev/video0.",
+    ));
+    cam_device_row.append(&cam_device_label);
+    cam_device_row.append(&cam_device);
+    root.append(&cam_device_row);
+
+    let cam_size_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let cam_size_label = gtk::Label::new(Some("Ukuran"));
+    cam_size_label.set_xalign(0.0);
+    cam_size_label.set_width_chars(14);
+    let cam_size_start = cfg.cam_width.clamp(120, 960);
+    let cam_size = gtk::Scale::with_range(gtk::Orientation::Horizontal, 120.0, 960.0, 10.0);
+    cam_size.set_value(f64::from(cam_size_start));
+    cam_size.set_draw_value(false);
+    cam_size.set_hexpand(true);
+    cam_size.set_tooltip_text(Some("Lebar gambar webcam di layar (piksel)."));
+    let cam_size_value = gtk::Label::new(Some(&format!("{cam_size_start} px")));
+    cam_size_value.set_width_chars(4);
+    cam_size_value.set_xalign(1.0);
+    cam_size_row.append(&cam_size_label);
+    cam_size_row.append(&cam_size);
+    cam_size_row.append(&cam_size_value);
+    root.append(&cam_size_row);
+
+    let cam_mirror_toggle = gtk::CheckButton::with_label("Cermin (mirror)");
+    cam_mirror_toggle.set_active(cfg.cam_mirror);
+    cam_mirror_toggle.set_tooltip_text(Some(
+        "Balik gambar seperti cermin, seperti saat melihat diri sendiri.",
+    ));
+    root.append(&cam_mirror_toggle);
+
+    let cam_status = gtk::Label::new(Some(if cfg.cam {
+        "Menyiapkan kamera…"
+    } else {
+        "Webcam mati."
+    }));
+    cam_status.set_wrap(true);
+    cam_status.set_xalign(0.0);
+    cam_status.add_css_class("dim-label");
+    root.append(&cam_status);
+
     // --- OBS Studio ---
     root.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
@@ -399,6 +489,7 @@ pub fn build(
 
     {
         let overlay = overlay.clone();
+        let webcam = webcam.clone();
         monitor.connect_selected_notify(move |dropdown| {
             let index = dropdown.selected();
             let connector = if index == 0 {
@@ -410,7 +501,49 @@ pub fn build(
                     .unwrap_or_default()
             };
             overlay.set_monitor(&connector);
+            webcam.set_monitor(&connector);
         });
+    }
+
+    // --- Webcam ---
+    {
+        let webcam = webcam.clone();
+        cam_toggle.connect_toggled(move |btn| {
+            let on = btn.is_active();
+            btn.set_label(if on { "Webcam: aktif" } else { "Webcam: mati" });
+            webcam.set_enabled(on);
+        });
+    }
+    {
+        let webcam = webcam.clone();
+        cam_device.connect_selected_notify(move |dropdown| {
+            if let Some(path) = cam_paths.get(dropdown.selected() as usize) {
+                webcam.set_device(path);
+            }
+        });
+    }
+    {
+        let webcam = webcam.clone();
+        let cam_size_value = cam_size_value.clone();
+        let last_cam_size = Rc::new(Cell::new(cam_size_start));
+        cam_size.connect_value_changed(move |scale| {
+            let px = scale.value().round() as i32;
+            cam_size_value.set_text(&format!("{px} px"));
+            if px == last_cam_size.get() {
+                return;
+            }
+            last_cam_size.set(px);
+            webcam.set_width(px);
+        });
+    }
+    {
+        let webcam = webcam.clone();
+        cam_mirror_toggle.connect_toggled(move |check| webcam.set_mirror(check.is_active()));
+    }
+    {
+        let webcam = webcam.clone();
+        let cam_status = cam_status.clone();
+        webcam.on_status(move |text| cam_status.set_text(text));
     }
 
     // --- Status ---
@@ -443,19 +576,21 @@ pub fn build(
     }
 
     // Sinkronkan tombol edit bila mode edit diubah lewat `ctl edit`.
-    let syncing = Rc::new(Cell::new(false));
-    {
+    let syncing = Rc::new(Cell::new(false));    {
         let edit = edit.clone();
         let syncing = syncing.clone();
+        let webcam = webcam.clone();
         overlay.on_editing_changed(move |on| {
             syncing.set(true);
             edit.set_active(on);
             syncing.set(false);
+            webcam.set_editing(on);
         });
     }
     {
         let overlay = overlay.clone();
         let syncing = syncing.clone();
+        let webcam = webcam.clone();
         edit.connect_toggled(move |btn| {
             if syncing.get() {
                 return;
@@ -464,6 +599,7 @@ pub fn build(
                 overlay.show();
             }
             overlay.set_editing(btn.is_active());
+            webcam.set_editing(btn.is_active());
         });
     }
 
@@ -689,6 +825,27 @@ fn preview_avatar(px: i32, color: (f64, f64, f64), initial: &str) -> gtk::Drawin
         cr.restore().ok();
     });
     area
+}
+
+/// Perangkat `/dev/video*` yang terpasang, dipakai daftar pilihan kamera.
+fn video_devices() -> Vec<String> {
+    let mut out = Vec::new();
+    let Ok(dir) = std::fs::read_dir("/dev") else {
+        return out;
+    };
+    for entry in dir.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let index = match name.strip_prefix("video") {
+            Some(rest) => rest,
+            None => continue,
+        };
+        if index.is_empty() || !index.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        out.push(format!("/dev/{name}"));
+    }
+    out.sort();
+    out
 }
 
 fn monitor_connectors() -> Vec<String> {

@@ -6,7 +6,7 @@ posisinya bisa digeser dengan mouse saat mode edit.
 
 Isi overlay: nama pengirim + badge (owner/mod/member), avatar, emoji (termasuk
 emoji custom kanal), highlight Super Chat/Super Sticker + nominal, dan pesan
-lama memudar otomatis.
+lama memudar otomatis. Ada juga **overlay webcam** di layar (terpisah dari OBS).
 
 ![Overlay chat di atas layar](docs/overlay.png)
 
@@ -20,6 +20,9 @@ Gambar di atas memakai contoh pesan, bukan live sungguhan.
 
 - KDE Plasma 6 dengan sesi **Wayland** (butuh protokol `wlr-layer-shell`).
 - `gtk4-layer-shell` (skrip pasang menangani ini).
+- `v4l-utils` untuk header `libv4l2` saat build (dipakai webcam; skrip pasang
+  menangani ini juga).
+- Pengguna harus bisa membaca `/dev/video*` — biasanya sudah lewat grup `video`.
 - Rust/cargo untuk build.
 - YouTube Data API v3 key (dari Google Cloud Console, aktifkan *YouTube Data API v3*).
 
@@ -29,8 +32,8 @@ Gambar di atas memakai contoh pesan, bukan live sungguhan.
 ./install.sh
 ```
 
-Skrip itu: memasang `gtk4-layer-shell` bila belum ada (minta password sudo),
-build release, memasang binary ke `~/.local/bin`, menambah entri menu
+Skrip itu: memasang `gtk4-layer-shell` dan `v4l-utils` bila belum ada (minta
+password sudo), build release, memasang binary ke `~/.local/bin`, menambah entri menu
 "Chat YouTube Live" + ikon, lalu langsung menjalankan aplikasinya.
 
 Opsi lain:
@@ -113,6 +116,28 @@ mati secara bawaan, dan ikut berhenti saat aplikasi ditutup. Bila port `8765`
 sudah dipakai program lain, panel menampilkan pesan gagal — matikan program itu
 atau pakai satu instance aplikasi saja.
 
+## Webcam di layar
+
+Kamera bisa tampil di atas game tanpa lewat OBS. Gambarnya berupa jendela
+transparan bertepi bulat yang selalu di atas dan **klik-tembus**, syaratnya
+sama dengan overlay chat.
+
+1. Di panel, gulir ke bagian **Webcam di layar**, pilih **Perangkat**
+   (biasanya `/dev/video0`).
+2. Tekan tombol **Webcam: mati** sampai berubah jadi **Webcam: aktif**.
+3. Atur **Ukuran** (lebar gambar di layar; tingginya mengikuti rasio kamera) dan
+   centang **Cermin** kalau ingin gambarnya dibalik seperti cermin.
+4. Untuk memindahkan: aktifkan **Mode edit posisi**, geser jendela webcam (dan
+   chat) dengan mouse, lalu matikan lagi untuk menyimpan posisinya.
+
+Status di bawah tombol menunjukkan hasilnya, mis. `Kamera aktif: video0 640×480
+MJPG.` Kalau kamera dicabut atau sedang dipakai aplikasi lain, aplikasi mencoba
+menyambung lagi tiap beberapa detik dan menampilkan pesan gagalnya.
+
+Webcam hanya untuk layar: halaman Browser Source OBS tetap berisi chat saja.
+Kalau ingin webcam ikut ke OBS, tambahkan source **Video Capture Device**
+biasa di OBS.
+
 ## File config
 
 `~/.config/ytchat-overlay/config.toml` (dibuat otomatis saat pertama jalan).
@@ -142,6 +167,11 @@ nilainya akan tertulis sendiri sebagai `avatar_px` begitu kamu menggeser slider.
 | `fade_after_secs` | `30.0` | Pesan mulai memudar setelah N detik. `0` = tidak pernah memudar. |
 | `fade_duration_secs` | `3.0` | Lama proses memudar sampai hilang. |
 | `poll_min_ms` | `5000` | Interval polling minimum ke API (ms). Lebih besar = lebih hemat kuota. |
+| `cam` | `false` | Tampilkan webcam di layar saat aplikasi dibuka. |
+| `cam_device` | `"/dev/video0"` | Perangkat V4L2 kamera. |
+| `cam_width` | `280` | Lebar gambar webcam di layar (piksel). Tinggi mengikuti rasio kamera. |
+| `cam_x`, `cam_y` | `30`, `720` | Posisi jendela webcam (piksel dari pojok kiri atas monitor). |
+| `cam_mirror` | `true` | Balik gambar seperti cermin. |
 
 ## Pemakaian lewat terminal (opsional)
 

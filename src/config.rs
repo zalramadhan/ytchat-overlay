@@ -38,6 +38,18 @@ pub struct Config {
 
     /// Interval polling minimum (ms). Makin besar = hemat kuota API.
     pub poll_min_ms: u64,
+
+    // Webcam di layar (jendela terpisah, tidak lewat OBS)
+    /// Tampilkan webcam di atas game.
+    pub cam: bool,
+    /// Perangkat V4L2, mis. "/dev/video0".
+    pub cam_device: String,
+    /// Lebar preview di layar (piksel); tingginya mengikuti rasio kamera.
+    pub cam_width: i32,
+    pub cam_x: i32,
+    pub cam_y: i32,
+    /// Cermin gambar, seperti cermin saat melihat diri sendiri.
+    pub cam_mirror: bool,
 }
 
 impl Default for Config {
@@ -62,6 +74,12 @@ impl Default for Config {
             fade_after_secs: 30.0,
             fade_duration_secs: 3.0,
             poll_min_ms: 5000,
+            cam: false,
+            cam_device: "/dev/video0".into(),
+            cam_width: 280,
+            cam_x: 30,
+            cam_y: 720,
+            cam_mirror: true,
         }
     }
 }
@@ -116,6 +134,19 @@ impl Config {
         c.avatar_px = cfg.avatar_px;
         c.msg_gap = cfg.msg_gap;
         c.output = cfg.output.clone();
+        c.save();
+    }
+
+    /// Simpan setelan webcam (perangkat, ukuran, posisi, cermin) tanpa
+    /// menulis API key dari env / argumen CLI ke disk.
+    pub fn save_cam(cfg: &Config) {
+        let mut c = Self::read_file().unwrap_or_default();
+        c.cam = cfg.cam;
+        c.cam_device = cfg.cam_device.clone();
+        c.cam_width = cfg.cam_width;
+        c.cam_x = cfg.cam_x;
+        c.cam_y = cfg.cam_y;
+        c.cam_mirror = cfg.cam_mirror;
         c.save();
     }
 

@@ -40,10 +40,12 @@ pub fn run(
             return;
         }
         let overlay = Rc::new(build(app, &cfg_for_activate, rx.clone(), obs_hub.clone()));
+        let webcam = crate::webcam::build(app, &cfg_for_activate);
         let panel = crate::control::build(
             app,
             &cfg_for_activate,
             overlay.clone(),
+            webcam,
             job_tx.clone(),
             obs_ctl.clone(),
         );
@@ -337,14 +339,14 @@ fn build(
     }
 }
 
-fn layer_of(cfg: &Config) -> Layer {
+pub(crate) fn layer_of(cfg: &Config) -> Layer {
     match cfg.layer.trim().to_ascii_lowercase().as_str() {
         "top" => Layer::Top,
         _ => Layer::Overlay,
     }
 }
 
-fn find_monitor(display: &gtk::gdk::Display, name: &str) -> Option<gtk::gdk::Monitor> {
+pub(crate) fn find_monitor(display: &gtk::gdk::Display, name: &str) -> Option<gtk::gdk::Monitor> {
     let monitors = display.monitors();
     for i in 0..monitors.n_items() {
         let obj = monitors.item(i)?;
